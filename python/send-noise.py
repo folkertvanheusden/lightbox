@@ -1,5 +1,6 @@
 #! /usr/bin/python3
 
+from lzjb import compress
 import random
 import socket
 import time
@@ -19,7 +20,8 @@ while True:
 
     print(MESSAGE, len(MESSAGE))
 
+    data_lzjb = compress(MESSAGE)
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.sendto(MESSAGE, (UDP_IP, UDP_PORT))
+    sock.sendto(data_lzjb, (UDP_IP, UDP_PORT))
 
     time.sleep(0.1)
