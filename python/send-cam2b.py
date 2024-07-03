@@ -1,6 +1,6 @@
 #! /usr/bin/python3
 
-# (C) 2019 by Folkert van Heusden <mail@vanheusden.com>
+# (C) 2019-2024 by Folkert van Heusden <mail@vanheusden.com>
 
 # This script requires the "opencv-python" package.
 
@@ -8,10 +8,8 @@ from lzjb import compress
 import socket
 import time
 
-#UDP_IP = '192.168.65.212' # change this
-#UDP_IP = '10.208.42.56' # change this
-UDP_IP = '192.168.65.150'
-UDP_PORT = 32001
+MC_IP = '226.1.1.9'
+MC_PORT = 32009
 
 from cv2 import *
 # initialize the camera
@@ -25,10 +23,15 @@ def rescale_by_width(image, target_width, method=INTER_LANCZOS4):
 def set_pixel(im,x,y,new):
     im[y,x] = new
 
-while True:
-    s, img = cam.read()
+MULTICAST_TTL = 15
 
-    if not s:
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, MULTICAST_TTL)
+
+while True:
+    sa, img = cam.read()
+
+    if not sa:
         continue
 
     img = rescale_by_width(img, 64)
@@ -64,6 +67,5 @@ while True:
 
     time.sleep(0.1)
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     data_lzjb = compress(MESSAGE)
-    sock.sendto(data_lzjb, (UDP_IP, UDP_PORT))
+    s.sendto(data_lzjb, (MC_IP, MC_PORT))
