@@ -220,7 +220,8 @@ void setup() {
 	data[0] = 7;
 	ledupdate(lc1, &data[0]);  
 
-	Udp.begin(32001);
+	//Udp.begin(32001);
+	Udp.beginMulticast(WiFi.localIP(), IPAddress(226, 1, 1, 9), 32009);
 
 	data[0] = 0;
 	ledupdate(lc1, &data[0]);  
@@ -329,7 +330,6 @@ void circle(int r, int cx, int cy, std::vector<std::pair<int, int> > *const out)
 
 void animate(int mode)
 {
-mode = 3;
 	if (mode == 1) {
 		static int y = 0;
 		static int d = 1;
@@ -398,8 +398,13 @@ void loop() {
 	int packetSize = Udp.parsePacket();
 	if (packetSize == 0) {
 		if (now - prev >= 1500) {
-			if (mode == 0)
+			static uint32_t prev_d2 = 0;
+
+			if (mode == 0 || now - prev_d2 >= 15000) {
+				memset(data, 0x00, sizeof data);
 				mode = (rand() % 3) + 1;
+				prev_d2 = now;
+			}
 
 			animate(mode);
 		}
