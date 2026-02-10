@@ -19,7 +19,7 @@
 
 #include <string>
 
-WiFiUDP    UdpMC;  // multicast text
+WiFiUDP    UdpMC;  // multicast LZJB compressed bitmap (64x24)
 
 WiFiServer  tcpPixelfloodServer(1337);
 std::vector<WiFiClient *> pfClients;
@@ -225,6 +225,7 @@ void setup() {
 	ledupdate(lc1, &data[0]);  
 
 	UdpMC.beginMulticast(WiFi.localIP(), IPAddress(226, 1, 1, 9), 32009);
+  tcpPixelfloodServer.begin();
 
 	data[0] = 0;
 	ledupdate(lc1, &data[0]);  
@@ -323,16 +324,14 @@ void get_quadrant(int bx, int by, int dx, int dy, int cx, int cy, int r, std::ve
 	}
 }
 
-void circle(int r, int cx, int cy, std::vector<std::pair<int, int> > *const out)
-{
+void circle(int r, int cx, int cy, std::vector<std::pair<int, int> > *const out) {
 	get_quadrant(cx, cy - r, 1, 1, cx, cy, r, out);
 	get_quadrant(cx + r, cy, -1, 1, cx, cy, r, out);
 	get_quadrant(cx, cy + r, -1, -1, cx, cy, r, out);
 	get_quadrant(cy - r, cy, 1, -1, cx, cy, r, out);
 }
 
-void animate(int mode)
-{
+void animate(int mode) {
 	if (mode == 1) {
 		static int y = 0;
 		static int d = 1;
@@ -396,24 +395,23 @@ bool processPixelflood(size_t nr) {
     if (lf == std::string::npos)
       return true;
 
-    if (lf < 13)
-      return false;
-
     if (buf.substr(0, lf) == "SIZE")
       pfClients.at(nr)->print("SIZE 64 24\n");
+    else if (lf < 13)
+      return false;
     else if (buf[0] == 'P' && buf[1] == 'X' && buf[2] == ' ')
     {
       int x      = atoi(buf.data() + 3);
       if (x < 0 || x >= 64)
         return false;
-      int space1 = buf.find(' ', 3);
+      size_t space1 = buf.find(' ', 3);
       if (space1 == std::string::npos)
         return false;
 
       int y     = atoi(buf.data() + space1 + 1);
       if (y < 0 || y >= 24)
         return false;
-      int space2 = buf.find(' ', space1 + 1);
+      size_t space2 = buf.find(' ', space1 + 1);
       if (space2 == std::string::npos)
         return false;
 
@@ -478,6 +476,7 @@ void loop() {
   }
 
   // check pixelflood clients for data
+  bool drawn_anything = false;
   for(size_t i=0; i<pfClients.size(); i++) {
     int nAvail = pfClients[i]->available();
     if (nAvail == 0)
@@ -492,7 +491,9 @@ void loop() {
       else
         pfBuffers[i] += char(c);
       if (c == '\n') {
-        if (!processPixelflood(i))
+        if (processPixelflood(i))
+          drawn_anything = true;
+        else
           fail = true;
       }
       if (pfBuffers[i].size() > 24 || fail) {  // sanity check
@@ -502,6 +503,12 @@ void loop() {
         break;
       }
     }
+  }
+
+  if (drawn_anything) {
+    ledupdate(lc1, &data[0]);
+    ledupdate(lc2, &data[64]);
+    ledupdate(lc3, &data[128]);
   }
 
 	static uint32_t prev         = 0;
