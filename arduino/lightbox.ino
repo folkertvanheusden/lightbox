@@ -19,11 +19,17 @@
 
 #include <string>
 
+#include "font.h"
+
+
 WiFiUDP    UdpMC;  // multicast LZJB compressed bitmap (64x24)
 
 WiFiServer  tcpPixelfloodServer(1337);
 std::vector<WiFiClient *> pfClients;
 std::vector<std::string> pfBuffers;
+
+WiFiClient   wclient;
+PubSubClient mqttclient(wclient);
 
 char name[32] { };
 
@@ -40,6 +46,36 @@ void reboot() {
 	delay(100);
 	ESP.restart();
 	delay(1000);
+}
+
+void MQTT_connect() {
+	mqttclient.loop();
+
+	if (!mqttclient.connected()) {
+		while (!mqttclient.connected()) {
+			Serial.println("Attempting MQTT connection... ");
+
+			if (mqttclient.connect(name)) {
+				Serial.println(F("Connected"));
+				break;
+			}
+
+			delay(1000);
+		}
+
+		Serial.println(F("MQTT Connected!"));
+
+		if (mqttclient.subscribe("nurdspace/hek42ticker") == false)
+			Serial.println("subscribe failed");
+		else
+			Serial.println("subscribed");
+		if (mqttclient.subscribe("nurdspace/hek42tocker") == false)
+			Serial.println("subscribe failed");
+		else
+			Serial.println("subscribed");
+
+		mqttclient.loop();
+	}
 }
 
 void setupWifi() {
@@ -230,6 +266,9 @@ void setup() {
 	data[0] = 0;
 	ledupdate(lc1, &data[0]);  
 
+	mqttclient.setServer("vps001.komputilo.nl", 1883);
+	mqttclient.setCallback(callback);
+
 	Serial.println(F("Go!"));
 }
 
@@ -272,13 +311,72 @@ bool getPixel(const int x, const int y)
 	return !!(data[o] & mask);
 }
 
-int get_distance(int x1, int y1, int x2, int y2)
+char bline1[10] { };
+char bline2[10] { };
+char bline3[10] { };
+
+void print_row(int o, const char what[])
 {
+  int n = strlen(what);
+  for(int i=0; i<n; i++) {
+    int c = what[i];
+    for(int y=0; y<8; y++) {
+      for(int x=0; x<8; x++)
+        setPixel(x + i * 7, o + y, font[c][y][x]);
+    }
+  }
+}
+
+void text(const char line[])
+{
+  Serial.println(line);
+  int n = strlen(line);
+  if (n >= 10)
+    n = 9;
+  memcpy(bline1, bline2, 10);
+  memcpy(bline2, bline3, 10);
+  memset(bline3, 0x00, 10);
+  memcpy(bline3, line, n);
+  bline3[n] = 0x00;
+
+  cls();
+  print_row(0, bline1);
+  print_row(8, bline2);
+  print_row(16, bline3);
+
+	ledupdate(lc1, &data[0]);
+	ledupdate(lc2, &data[64]);
+	ledupdate(lc3, &data[128]);
+}
+
+void callback(const char topic[], byte *payload, unsigned int len) {
+	if (!payload || len == 0)
+		return;
+
+  if (strstr(topic, "hek42ticker")) {
+    if (len >= 10)
+      len = 9;
+
+    char temp[10];
+    memcpy(temp, payload, len);
+    temp[len] = 0x00;
+    text(temp);
+  }
+  else {
+    uint8_t data2[256];
+    lzjb_decompress(payload, data, len, 192);
+
+    ledupdate(lc1, &data[0]);
+    ledupdate(lc2, &data[64]);
+    ledupdate(lc3, &data[128]);
+  }
+}
+
+int getDistance(int x1, int y1, int x2, int y2) {
 	return (x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2);
 }
 
-std::pair<int, int> get_next_point(int x, int y, int dx, int dy, int cx, int cy, int r)
-{
+std::pair<int, int> get_next_point(int x, int y, int dx, int dy, int cx, int cy, int r) {
 	int r2 = r * r;
 
 	int x1 = x + dx;
@@ -290,9 +388,9 @@ std::pair<int, int> get_next_point(int x, int y, int dx, int dy, int cx, int cy,
 	int x3 = x + dx;
 	int y3 = y;
 
-	int dif1 = abs(get_distance(x1, y1, cx, cy) - r2);
-	int dif2 = abs(get_distance(x2, y2, cx, cy) - r2);
-	int dif3 = abs(get_distance(x3, y3, cx, cy) - r2);
+	int dif1 = abs(getDistance(x1, y1, cx, cy) - r2);
+	int dif2 = abs(getDistance(x2, y2, cx, cy) - r2);
+	int dif3 = abs(getDistance(x3, y3, cx, cy) - r2);
 
 	int diff_min = std::min(std::min(dif1, dif2), dif3);
 
@@ -443,8 +541,9 @@ bool processPixelflood(size_t nr) {
 }
 
 void loop() {
-	webServer -> handleClient();
+	webServer->handleClient();
 	ArduinoOTA.handle();
+  MQTT_connect();
 
   bool activity = false;
 
