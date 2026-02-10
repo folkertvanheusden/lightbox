@@ -12,14 +12,18 @@
 #include "WiFiManager.h"         // https://github.com/tzapu/WiFiManager
 
 #include <WiFiUdp.h>
+
 #include <ArduinoOTA.h>
-
 #include <ESP8266mDNS.h>
-
 #include <ESP8266SSDP.h>
 
-#include <WiFiUdp.h>
-WiFiUDP Udp;
+#include <string>
+
+WiFiUDP    UdpMC;  // multicast text
+
+WiFiServer  tcpPixelfloodServer(1337);
+std::vector<WiFiClient *> pfClients;
+std::vector<std::string> pfBuffers;
 
 char name[32] { };
 
@@ -28,7 +32,7 @@ WiFiManager wifiManager;
 #include <ESP8266HTTPUpdateServer.h>
 ESP8266HTTPUpdateServer httpUpdater;
 
-ESP8266WebServer *webServer = NULL;
+ESP8266WebServer *webServer = nullptr;
 
 void reboot() {
 	Serial.println(F("Reboot"));
@@ -220,8 +224,7 @@ void setup() {
 	data[0] = 7;
 	ledupdate(lc1, &data[0]);  
 
-	//Udp.begin(32001);
-	Udp.beginMulticast(WiFi.localIP(), IPAddress(226, 1, 1, 9), 32009);
+	UdpMC.beginMulticast(WiFi.localIP(), IPAddress(226, 1, 1, 9), 32009);
 
 	data[0] = 0;
 	ledupdate(lc1, &data[0]);  
@@ -238,7 +241,7 @@ void cls()
 	}
 }
 
-void set_pixel(const int x, const int y, const bool c)
+void setPixel(const int x, const int y, const bool c)
 {
 	if (x >= 64 || x < 0 || y >= 24 || y < 0)
 		return;
@@ -336,7 +339,7 @@ void animate(int mode)
 
 		memset(data, 0x00, sizeof data);
 		for(int x=0; x<64; x++)
-			set_pixel(x, y, true);
+			setPixel(x, y, true);
 
 		y += d;
 		if (y == 25) {
@@ -353,7 +356,7 @@ void animate(int mode)
 		static int y = 0;
 
 		memset(data, 0x00, sizeof data);
-		set_pixel(x, y, true);
+		setPixel(x, y, true);
 
 		x++;
 		if (x == 64) {
@@ -374,7 +377,7 @@ void animate(int mode)
 
 		for(int i=0; i<4; i++) {
 			for(auto & p: pixels[i])
-				set_pixel(p.first, p.second, !get_pixel(p.first, p.second));
+				setPixel(p.first, p.second, !get_pixel(p.first, p.second));
 		}
 	}
 	else {
@@ -386,18 +389,143 @@ void animate(int mode)
 	ledupdate(lc3, &data[128]);
 }
 
+bool processPixelflood(size_t nr) {
+  for(;;) {
+    auto & buf = pfBuffers.at(nr);
+    auto   lf  = buf.find('\n');
+    if (lf == std::string::npos)
+      return true;
+
+    if (lf < 13)
+      return false;
+
+    if (buf.substr(0, lf) == "SIZE")
+      pfClients.at(nr)->print("SIZE 64 24\n");
+    else if (buf[0] == 'P' && buf[1] == 'X' && buf[2] == ' ')
+    {
+      int x      = atoi(buf.data() + 3);
+      if (x < 0 || x >= 64)
+        return false;
+      int space1 = buf.find(' ', 3);
+      if (space1 == std::string::npos)
+        return false;
+
+      int y     = atoi(buf.data() + space1 + 1);
+      if (y < 0 || y >= 24)
+        return false;
+      int space2 = buf.find(' ', space1 + 1);
+      if (space2 == std::string::npos)
+        return false;
+
+      if (lf - space2 < 6)
+        return false;
+
+      int r      = 0;
+      char n1    = toupper(buf[space2 + 1]);
+      if (n1 >= 'A')
+        r = (n1 - 'A' + 10) << 4;
+      else
+        r = (n1 - '0') << 4;
+
+      char n2    = toupper(buf[space2 + 2]);
+      if (n2 >= 'A')
+        r += n2 - 'A' + 10;
+      else
+        r += n2 - '0';
+      setPixel(x, y, r >= 128);
+    }
+    else {
+      return false;
+    }
+
+    buf = buf.substr(lf + 1);
+  }
+
+  return false;
+}
+
 void loop() {
 	webServer -> handleClient();
 	ArduinoOTA.handle();
 
-	static uint32_t prev = 0;
-	uint32_t now = millis();
+  bool activity = false;
 
-	static int mode = 0;
+  // pixelflood connection management
+  WiFiClient newPixelfloodClient = tcpPixelfloodServer.available();
+  if (newPixelfloodClient) {
+    // check if all still there
+    for(size_t i=0; i<pfClients.size();) {
+      if (pfClients.at(i)->connected() == false) {
+        delete pfClients[i];
+        pfClients.erase(pfClients.begin() + i);
+        pfBuffers.erase(pfBuffers.begin() + i);
+      }
+      else {
+        i++;
+      }
+    }
+    // max 32 clients
+    while(pfClients.size() > 32) {
+      delete pfClients[0];
+      pfClients.erase(pfClients.begin());
+      pfBuffers.erase(pfBuffers.begin());
+    }
 
-	int packetSize = Udp.parsePacket();
-	if (packetSize == 0) {
-		if (now - prev >= 1500) {
+    pfClients.push_back(new WiFiClient(newPixelfloodClient));
+    pfBuffers.push_back("");
+
+    activity = true;
+  }
+
+  // check pixelflood clients for data
+  for(size_t i=0; i<pfClients.size(); i++) {
+    int nAvail = pfClients[i]->available();
+    if (nAvail == 0)
+      continue;
+    activity = true;
+    // read data from socket until \n is received (a complete pixelflood "packet")
+    bool fail = false;
+    for(int nr=0; nr<nAvail; nr++) {
+      int c = pfClients[i]->read();
+      if (c == -1)
+        fail = true;
+      else
+        pfBuffers[i] += char(c);
+      if (c == '\n') {
+        if (!processPixelflood(i))
+          fail = true;
+      }
+      if (pfBuffers[i].size() > 24 || fail) {  // sanity check
+        delete pfClients[i];
+        pfClients.erase(pfClients.begin() + i);
+        pfBuffers.erase(pfBuffers.begin() + i);
+        break;
+      }
+    }
+  }
+
+	static uint32_t prev         = 0;
+	static int      mode         = 0;
+	uint32_t        now          = millis();
+	int             packetSizeMC = UdpMC.parsePacket();
+
+  if (packetSizeMC) {
+    uint8_t data2[256];
+    int len = UdpMC.read(data2, 256);
+    lzjb_decompress(data2, data, len, 192);
+
+    ledupdate(lc1, &data[0]);
+    ledupdate(lc2, &data[64]);
+    ledupdate(lc3, &data[128]);
+    activity = true;
+  }
+
+  if (activity) {
+    mode = 0;
+    prev = now;
+  }
+  else {
+		if (now - prev >= 2100) {  // slightly more than 2 seconds
 			static uint32_t prev_d2 = 0;
 
 			if (mode == 0 || now - prev_d2 >= 15000) {
@@ -408,19 +536,5 @@ void loop() {
 
 			animate(mode);
 		}
-
-		return;
 	}
-
-	mode = 0;
-
-	prev = now;
-
-	uint8_t data2[256];
-	int len = Udp.read(data2, 256);
-	lzjb_decompress(data2, data, len, 192);
-
-	ledupdate(lc1, &data[0]);
-	ledupdate(lc2, &data[64]);
-	ledupdate(lc3, &data[128]);
 }
