@@ -25,8 +25,15 @@
 WiFiUDP    UdpMC;  // multicast LZJB compressed bitmap (64x24)
 
 WiFiServer  tcpPixelfloodServer(1337);
-std::vector<WiFiClient *> pfClients;
-std::vector<std::string> pfBuffers;
+
+#define BS  48
+struct pf {
+  WiFiClient *handle     { nullptr };
+  int         o          { 0       };
+  char        buffer[BS] {         };
+};
+
+std::vector<pf> pfClients;
 
 WiFiClient   wclient;
 PubSubClient mqttclient(wclient);
@@ -329,7 +336,6 @@ void print_row(int o, const char what[])
 
 void text(const char line[])
 {
-  Serial.println(line);
   int n = strlen(line);
   if (n >= 10)
     n = 9;
@@ -363,9 +369,7 @@ void callback(const char topic[], byte *payload, unsigned int len) {
     text(temp);
   }
   else {
-    uint8_t data2[256];
     lzjb_decompress(payload, data, len, 192);
-
     ledupdate(lc1, &data[0]);
     ledupdate(lc2, &data[64]);
     ledupdate(lc3, &data[128]);
@@ -488,53 +492,69 @@ void animate(int mode) {
 
 bool processPixelflood(size_t nr) {
   for(;;) {
-    auto & buf = pfBuffers.at(nr);
-    auto   lf  = buf.find('\n');
-    if (lf == std::string::npos)
+    char *buf = pfClients.at(nr).buffer;
+    char *lf  = strchr(buf, '\n');
+    if (lf == nullptr)
       return true;
+    *lf = 0x00;
 
-    if (buf.substr(0, lf) == "SIZE")
-      pfClients.at(nr)->print("SIZE 64 24\n");
-    else if (lf < 13)
+    if (strcmp(buf, "SIZE") == 0) {
+      pfClients.at(nr).handle->print("SIZE 64 24\n");
+    }
+    else if (lf - buf < 13) {
       return false;
+    }
     else if (buf[0] == 'P' && buf[1] == 'X' && buf[2] == ' ')
     {
-      int x      = atoi(buf.data() + 3);
+      char *sp[3] { nullptr, nullptr, nullptr };
+      int n_sp = 0;
+      char *p = buf;
+      while(p < lf && n_sp < 3) {
+        if (*p == ' ')
+          sp[n_sp++]= p;
+        p++;
+      }
+      if (n_sp != 3)
+        return false;
+
+      int x = atoi(sp[0]);
       if (x < 0 || x >= 64)
         return false;
-      size_t space1 = buf.find(' ', 3);
-      if (space1 == std::string::npos)
-        return false;
 
-      int y     = atoi(buf.data() + space1 + 1);
+      int y = atoi(sp[1]);
       if (y < 0 || y >= 24)
         return false;
-      size_t space2 = buf.find(' ', space1 + 1);
-      if (space2 == std::string::npos)
-        return false;
 
-      if (lf - space2 < 6)
+      if (lf - sp[2] < 6)
         return false;
 
       int r      = 0;
-      char n1    = toupper(buf[space2 + 1]);
+      char n1    = toupper(sp[2][1]);
       if (n1 >= 'A')
         r = (n1 - 'A' + 10) << 4;
       else
         r = (n1 - '0') << 4;
-
-      char n2    = toupper(buf[space2 + 2]);
+/*
+      char n2    = toupper(sp[2][2]);
       if (n2 >= 'A')
         r += n2 - 'A' + 10;
       else
         r += n2 - '0';
+*/
       setPixel(x, y, r >= 128);
     }
     else {
       return false;
     }
 
-    buf = buf.substr(lf + 1);
+    int was_length = lf - pfClients[nr].buffer + 1;
+    int bytes_left = pfClients[nr].o - was_length;
+    if (bytes_left < 0)  // internal error
+      return false;
+
+    if (bytes_left > 0)
+      memmove(&pfClients[nr].buffer[0], lf + 1, bytes_left);
+    pfClients[nr].o -= was_length;
   }
 
   return false;
@@ -552,10 +572,9 @@ void loop() {
   if (newPixelfloodClient) {
     // check if all still there
     for(size_t i=0; i<pfClients.size();) {
-      if (pfClients.at(i)->connected() == false) {
-        delete pfClients[i];
+      if (pfClients.at(i).handle->connected() == false) {
+        delete pfClients[i].handle;
         pfClients.erase(pfClients.begin() + i);
-        pfBuffers.erase(pfBuffers.begin() + i);
       }
       else {
         i++;
@@ -563,13 +582,12 @@ void loop() {
     }
     // max 32 clients
     while(pfClients.size() > 32) {
-      delete pfClients[0];
+      delete pfClients[0].handle;
       pfClients.erase(pfClients.begin());
-      pfBuffers.erase(pfBuffers.begin());
+      Serial.println("CLOSE SESSION");
     }
 
-    pfClients.push_back(new WiFiClient(newPixelfloodClient));
-    pfBuffers.push_back("");
+    pfClients.push_back({ new WiFiClient(newPixelfloodClient), 0 });
 
     activity = true;
   }
@@ -577,28 +595,36 @@ void loop() {
   // check pixelflood clients for data
   bool drawn_anything = false;
   for(size_t i=0; i<pfClients.size(); i++) {
-    int nAvail = pfClients[i]->available();
+    int nAvail = pfClients[i].handle->available();
     if (nAvail == 0)
       continue;
     activity = true;
     // read data from socket until \n is received (a complete pixelflood "packet")
     bool fail = false;
     for(int nr=0; nr<nAvail; nr++) {
-      int c = pfClients[i]->read();
+      // read & add to buffer unless it is still full (when full, it is invalid)
+      int c = pfClients[i].handle->read();
       if (c == -1)
         fail = true;
+      else if (pfClients[i].o >= BS)  // sanity check
+      { Serial.printf("too much data %d %d\r\n", pfClients[i].o, BS);
+        Serial.println(pfClients[i].buffer);
+        fail = true;
+      }
       else
-        pfBuffers[i] += char(c);
+        pfClients[i].buffer[pfClients[i].o++] = char(c);
+
       if (c == '\n') {
+        pfClients[i].buffer[BS - 1] = 0x00;
         if (processPixelflood(i))
           drawn_anything = true;
         else
           fail = true;
       }
-      if (pfBuffers[i].size() > 24 || fail) {  // sanity check
-        delete pfClients[i];
-        pfClients.erase(pfClients.begin() + i);
-        pfBuffers.erase(pfBuffers.begin() + i);
+
+      if (fail) {
+        Serial.println("FAIL");
+        pfClients[i].handle->stop();
         break;
       }
     }
