@@ -242,11 +242,8 @@ void cls()
 	}
 }
 
-void setPixel(const int x, const int y, const bool c)
+inline void setPixel(const int x, const int y, const bool c)
 {
-	if (x >= 64 || x < 0 || y >= 24 || y < 0)
-		return;
-
 	int pixel_row = y / 8;
 	int matrix    = x / 8;
 	int matrix_y  = 7 - (y & 7);
@@ -260,7 +257,7 @@ void setPixel(const int x, const int y, const bool c)
 		data[o] &= ~mask;
 }
 
-bool get_pixel(const int x, const int y)
+bool getPixel(const int x, const int y)
 {
 	if (x >= 64 || x < 0 || y >= 24 || y < 0)
 		return false;
@@ -320,6 +317,9 @@ void get_quadrant(int bx, int by, int dx, int dy, int cx, int cy, int r, std::ve
 		x = rc.first;
 		y = rc.second;
 
+    if (x >= 64 || x < 0 || y >= 24 || y < 0)
+      continue;
+
 		out->push_back(rc);
 	}
 }
@@ -376,7 +376,7 @@ void animate(int mode) {
 
 		for(int i=0; i<4; i++) {
 			for(auto & p: pixels[i])
-				setPixel(p.first, p.second, !get_pixel(p.first, p.second));
+				setPixel(p.first, p.second, !getPixel(p.first, p.second));
 		}
 	}
 	else {
@@ -505,12 +505,6 @@ void loop() {
     }
   }
 
-  if (drawn_anything) {
-    ledupdate(lc1, &data[0]);
-    ledupdate(lc2, &data[64]);
-    ledupdate(lc3, &data[128]);
-  }
-
 	static uint32_t prev         = 0;
 	static int      mode         = 0;
 	uint32_t        now          = millis();
@@ -520,11 +514,14 @@ void loop() {
     uint8_t data2[256];
     int len = UdpMC.read(data2, 256);
     lzjb_decompress(data2, data, len, 192);
+    drawn_anything = true;
+    activity       = true;
+  }
 
+  if (drawn_anything) {
     ledupdate(lc1, &data[0]);
     ledupdate(lc2, &data[64]);
     ledupdate(lc3, &data[128]);
-    activity = true;
   }
 
   if (activity) {
