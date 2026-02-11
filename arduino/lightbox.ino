@@ -401,7 +401,7 @@ int getDistance(int x1, int y1, int x2, int y2) {
 	return (x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2);
 }
 
-std::pair<int, int> get_next_point(int x, int y, int dx, int dy, int cx, int cy, int r) {
+std::pair<int, int> getNextPoint(int x, int y, int dx, int dy, int cx, int cy, int r) {
 	int r2 = r * r;
 
 	int x1 = x + dx;
@@ -435,8 +435,8 @@ void getQuadrant(int bx, int by, int dx, int dy, int cx, int cy, int r, std::vec
 	int max_x = bx + dx * r;
 	int max_y = by + dy * r;
 
-	while ((dx * (x - max_x) <= 0) && (dy * (y - max_y) <= 0)) {
-		auto rc = get_next_point(x, y, dx, dy, cx, cy, r);
+	while (dx * (x - max_x) <= 0 && dy * (y - max_y) <= 0) {
+		auto rc = getNextPoint(x, y, dx, dy, cx, cy, r);
 		x = rc.first;
 		y = rc.second;
 
