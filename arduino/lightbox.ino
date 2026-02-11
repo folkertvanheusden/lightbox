@@ -23,8 +23,10 @@
 
 
 WiFiUDP    UdpMC;  // multicast LZJB compressed bitmap (64x24)
+WiFiServer tcpPixelfloodServer(1337);
 
-WiFiServer  tcpPixelfloodServer(1337);
+WiFiUDP    UdpAnnouncePixelflood;
+uint8_t    broadcast[4] { };
 
 #define BS  48
 struct pf {
@@ -296,6 +298,14 @@ void setup() {
 
 	UdpMC.beginMulticast(WiFi.localIP(), IPAddress(226, 1, 1, 9), 32009);
   tcpPixelfloodServer.begin();
+  UdpAnnouncePixelflood.begin(1337);
+
+  auto ip = WiFi.localIP();
+  auto netmask = WiFi.subnetMask();
+  broadcast[0] = ip[0] | (~netmask[0]);
+  broadcast[1] = ip[1] | (~netmask[1]);
+  broadcast[2] = ip[2] | (~netmask[2]);
+  broadcast[3] = ip[3] | (~netmask[3]);
 
 	data[0] = 0;
   putScreen();
@@ -303,7 +313,6 @@ void setup() {
 	mqttclient.setServer("vps001.komputilo.nl", 1883);
 	mqttclient.setCallback(callback);
 
-  auto ip = WiFi.localIP();
   char buffer[24] { };
   snprintf(buffer, sizeof buffer, "%d.%d", ip[0], ip[1]);
   text(buffer);
@@ -579,10 +588,25 @@ bool processPixelflood(size_t nr) {
   return false;
 }
 
+void sendPixelfloodAnnouncement() {
+  static uint32_t prev_send = 0;
+	uint32_t        now       = millis();
+  if (now - prev_send < 1500)
+    return;
+  prev_send = now;
+  char msg[64] { };
+  auto ip = WiFi.localIP();
+  snprintf(msg, sizeof msg, "pixelvloed:1.00 %d.%d.%d.%d:1337 64*24", ip[0], ip[1], ip[2], ip[3]);
+  UdpAnnouncePixelflood.beginPacket(broadcast, 1337);
+  UdpAnnouncePixelflood.write(msg);
+  UdpAnnouncePixelflood.endPacket();
+}
+
 void loop() {
 	webServer->handleClient();
 	ArduinoOTA.handle();
   MQTT_connect();
+  sendPixelfloodAnnouncement();
 
   bool activity = false;
 
