@@ -47,6 +47,25 @@ ESP8266HTTPUpdateServer httpUpdater;
 
 ESP8266WebServer *webServer = nullptr;
 
+/*
+   int dataPin, int clkPin, int csPin
+   pin 12 is connected to the DataIn
+   pin 11 is connected to the CLK
+   pin 10 is connected to LOAD
+ */
+#define NP 8
+LedControl lc1 = LedControl(D1, D2, D3, NP);
+LedControl lc2 = LedControl(D1, D2, D4, NP);
+LedControl lc3 = LedControl(D1, D2, D5, NP);
+
+uint8_t data[192];
+
+void putScreen() {
+    ledupdate(lc1, &data[0]);
+    ledupdate(lc2, &data[64]);
+    ledupdate(lc3, &data[128]);
+}
+
 void reboot() {
 	Serial.println(F("Reboot"));
 	Serial.flush();
@@ -85,12 +104,37 @@ void MQTT_connect() {
 	}
 }
 
+char bline1[10] { };
+char bline2[10] { };
+char bline3[10] { };
+
+void text(const char line[])
+{
+  int n = strlen(line);
+  if (n >= 10)
+    n = 9;
+  memcpy(bline1, bline2, 10);
+  memcpy(bline2, bline3, 10);
+  memset(bline3, 0x00, 10);
+  memcpy(bline3, line, n);
+  bline3[n] = 0x00;
+
+  cls();
+  printRow(0, bline1);
+  printRow(8, bline2);
+  printRow(16, bline3);
+
+  putScreen();
+}
+
 void setupWifi() {
 	WiFi.hostname(name);
 	WiFi.begin();
 
 	if (!wifiManager.autoConnect(name))
 		reboot();
+
+	Serial.println(WiFi.localIP());
 }
 
 void startMDNS() {
@@ -113,9 +157,9 @@ void startSSDP(ESP8266WebServer *const ws) {
 	SSDP.setURL("index.html");
 	SSDP.setModelName("L-B");
 	SSDP.setModelNumber("0.2");
-	SSDP.setModelURL("http://www.vanheusden.com/Arduino/lightbox");
+	SSDP.setModelURL("http://www.komputilo.nl/Arduino/lightbox");
 	SSDP.setManufacturer("vanHeusden.com");
-	SSDP.setManufacturerURL("http://www.vanheusden.com/");
+	SSDP.setManufacturerURL("http://www.komputilo.nl/");
 
 	SSDP.begin();
 }
@@ -146,11 +190,13 @@ void enableOTA() {
 	Serial.println(F("Ready"));
 }
 
-void handleRoot() {
-	char page[1024];
-	snprintf(page, sizeof page, "<h1>LightBox %d</h1><p>built on " __DATE__ " " __TIME__ "</p><p>free sketch space: %lu</p><p><a href=\"/update\">update device firmware</a></p>", ESP.getChipId(), ESP.getFreeSketchSpace());
+constexpr const char page[] = "<!DOCTYPE html><html lang=\"en\"><head><title>komputilo.nl</title><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta charset=\"utf-8\"><link href=\"https://komputilo.nl/simple.css\" rel=\"stylesheet\" type=\"text/css\"></head><body><h1>LightBox</h1><article><header><h2>revision</h2></header><p>Built on " __DATE__ " " __TIME__ "<br>GIT revision: " __GIT_REVISION__ "</p></article><article><header><h2>what?</h2></header><p>Designed by <a href=\"mailto:folkert@komputilo.nl\">Folkert van Heusden</a>, see <a href=\"https://komputilo.nl/texts/lightbox/\">https://komputilo.nl/texts/lightbox/</a> for more details.</p></article></body></html>\n";
 
+void handleRoot() {
 	webServer -> send(200, "text/html", page);
+}
+
+void handleNurdspace_cgi() {
 }
 
 #define MATCH_BITS  6
@@ -159,7 +205,7 @@ void handleRoot() {
 #define OFFSET_MASK ((1 << (16 - MATCH_BITS)) - 1)
 #define LEMPEL_SIZE 1024
 
-void lzjb_decompress(uint8_t *s_start, uint8_t *d_start, size_t s_len, size_t d_len) {
+void lzjbDecompress(uint8_t *s_start, uint8_t *d_start, size_t s_len, size_t d_len) {
 	constexpr const byte NBBY = 8;
 	uint8_t *src = s_start;
 	uint8_t *dst = d_start;
@@ -188,19 +234,6 @@ void lzjb_decompress(uint8_t *s_start, uint8_t *d_start, size_t s_len, size_t d_
 		}
 	}
 }
-
-/*
-   int dataPin, int clkPin, int csPin
-   pin 12 is connected to the DataIn
-   pin 11 is connected to the CLK
-   pin 10 is connected to LOAD
- */
-#define NP 8
-LedControl lc1 = LedControl(D1, D2, D3, NP);
-LedControl lc2 = LedControl(D1, D2, D4, NP);
-LedControl lc3 = LedControl(D1, D2, D5, NP);
-
-uint8_t data[192];
 
 void ledupdate(LedControl & dev, const uint8_t *const buf) {
 	const uint8_t *p = buf;
@@ -231,26 +264,20 @@ void setup() {
 	}
 
 	data[0] = 1;
-	ledupdate(lc1, &data[0]);  
+  putScreen();
 
 	enableOTA();
 
 	setupWifi();
 
 	data[0] = 3;
-	ledupdate(lc1, &data[0]);  
-
-	while (WiFi.status() != WL_CONNECTED) {
-		delay(100);
-		Serial.print(".");
-	}
-
-	Serial.println(WiFi.localIP());
+  putScreen();
 
 	webServer = new ESP8266WebServer(80);
 
 	webServer -> on("/", handleRoot);
 	webServer -> on("/index.html", handleRoot);
+	webServer -> on("/nurdspage.cgi", handleNurdspace_cgi);
 
 	webServer -> on("/description.xml", HTTP_GET, []() {
 			SSDP.schema(webServer -> client());
@@ -265,16 +292,37 @@ void setup() {
 	startSSDP(webServer);
 
 	data[0] = 7;
-	ledupdate(lc1, &data[0]);  
+  putScreen();
 
 	UdpMC.beginMulticast(WiFi.localIP(), IPAddress(226, 1, 1, 9), 32009);
   tcpPixelfloodServer.begin();
 
 	data[0] = 0;
-	ledupdate(lc1, &data[0]);  
+  putScreen();
 
 	mqttclient.setServer("vps001.komputilo.nl", 1883);
 	mqttclient.setCallback(callback);
+
+  auto ip = WiFi.localIP();
+  char buffer[24] { };
+  snprintf(buffer, sizeof buffer, "%d.%d", ip[0], ip[1]);
+  text(buffer);
+  snprintf(buffer, sizeof buffer, ".%d.%d", ip[2], ip[3]);
+  text(buffer);
+  putScreen();
+  delay(1000);
+  for(byte i=0; i<10; i++) {
+    for(byte x=0; x<64; x++) {
+      setPixel(x,  0, !getPixel(x,  0));
+      setPixel(x, 23, !getPixel(x, 23));
+    }
+    for(int y=0; y<24; y++) {
+      setPixel( 0, y, !getPixel( 0, y));
+      setPixel(63, y, !getPixel(63, y));
+    }
+    putScreen();
+    delay(200);
+  }
 
 	Serial.println(F("Go!"));
 }
@@ -318,11 +366,7 @@ bool getPixel(const int x, const int y)
 	return !!(data[o] & mask);
 }
 
-char bline1[10] { };
-char bline2[10] { };
-char bline3[10] { };
-
-void print_row(int o, const char what[])
+void printRow(int o, const char what[])
 {
   int n = strlen(what);
   for(int i=0; i<n; i++) {
@@ -332,27 +376,6 @@ void print_row(int o, const char what[])
         setPixel(x + i * 7, o + y, font[c][y][x]);
     }
   }
-}
-
-void text(const char line[])
-{
-  int n = strlen(line);
-  if (n >= 10)
-    n = 9;
-  memcpy(bline1, bline2, 10);
-  memcpy(bline2, bline3, 10);
-  memset(bline3, 0x00, 10);
-  memcpy(bline3, line, n);
-  bline3[n] = 0x00;
-
-  cls();
-  print_row(0, bline1);
-  print_row(8, bline2);
-  print_row(16, bline3);
-
-	ledupdate(lc1, &data[0]);
-	ledupdate(lc2, &data[64]);
-	ledupdate(lc3, &data[128]);
 }
 
 void callback(const char topic[], byte *payload, unsigned int len) {
@@ -369,10 +392,8 @@ void callback(const char topic[], byte *payload, unsigned int len) {
     text(temp);
   }
   else {
-    lzjb_decompress(payload, data, len, 192);
-    ledupdate(lc1, &data[0]);
-    ledupdate(lc2, &data[64]);
-    ledupdate(lc3, &data[128]);
+    lzjbDecompress(payload, data, len, 192);
+    putScreen();
   }
 }
 
@@ -485,9 +506,7 @@ void animate(int mode) {
 		cls();
 	}
 
-	ledupdate(lc1, &data[0]);
-	ledupdate(lc2, &data[64]);
-	ledupdate(lc3, &data[128]);
+  putScreen();
 }
 
 bool processPixelflood(size_t nr) {
@@ -638,16 +657,13 @@ void loop() {
   if (packetSizeMC) {
     uint8_t data2[256];
     int len = UdpMC.read(data2, 256);
-    lzjb_decompress(data2, data, len, 192);
+    lzjbDecompress(data2, data, len, 192);
     drawn_anything = true;
     activity       = true;
   }
 
-  if (drawn_anything) {
-    ledupdate(lc1, &data[0]);
-    ledupdate(lc2, &data[64]);
-    ledupdate(lc3, &data[128]);
-  }
+  if (drawn_anything)
+    putScreen();
 
   if (activity) {
     mode = 0;
