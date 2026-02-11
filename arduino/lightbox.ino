@@ -427,7 +427,7 @@ std::pair<int, int> get_next_point(int x, int y, int dx, int dy, int cx, int cy,
 	return { x3, y3 };
 }
 
-void get_quadrant(int bx, int by, int dx, int dy, int cx, int cy, int r, std::vector<std::pair<int, int> > *const out)
+void getQuadrant(int bx, int by, int dx, int dy, int cx, int cy, int r, std::vector<std::pair<int, int> > *const out)
 {
 	int x = bx;
 	int y = by;
@@ -448,10 +448,10 @@ void get_quadrant(int bx, int by, int dx, int dy, int cx, int cy, int r, std::ve
 }
 
 void circle(int r, int cx, int cy, std::vector<std::pair<int, int> > *const out) {
-	get_quadrant(cx, cy - r, 1, 1, cx, cy, r, out);
-	get_quadrant(cx + r, cy, -1, 1, cx, cy, r, out);
-	get_quadrant(cx, cy + r, -1, -1, cx, cy, r, out);
-	get_quadrant(cy - r, cy, 1, -1, cx, cy, r, out);
+	getQuadrant(cx, cy - r, 1, 1, cx, cy, r, out);
+	getQuadrant(cx + r, cy, -1, 1, cx, cy, r, out);
+	getQuadrant(cx, cy + r, -1, -1, cx, cy, r, out);
+	getQuadrant(cy - r, cy, 1, -1, cx, cy, r, out);
 }
 
 void animate(int mode) {
