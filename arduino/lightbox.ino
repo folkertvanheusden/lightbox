@@ -19,8 +19,9 @@
 
 #include <string>
 
-#include "font.h"
 #include "favicon.h"
+#include "font.h"
+#include "simple-css.h"
 
 
 WiFiUDP    UdpMC;  // multicast LZJB compressed bitmap (64x24)
@@ -294,8 +295,12 @@ void handleScreendump() {
 }
 
 void handleRoot() {
-  snprintf(p, sizeof work_buffer, "<!DOCTYPE html><html lang=\"en\"><head><title>komputilo.nl</title><link rel=\"icon\" type=\"image/x-icon\" href=\"/favicon.ico\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta charset=\"utf-8\"><link href=\"https://komputilo.nl/simple.css\" rel=\"stylesheet\" type=\"text/css\"></head><body><h1>LightBox</h1><article><header><h2>revision</h2></header><p>Built on " __DATE__ " " __TIME__ "<br>GIT revision: " __GIT_REVISION__ "</p></article><article><header><h2>screenshot</h2></header><p><img src=\"/screendump.bmp\"></p></article><article><header><h2>toggles</h2></header><p><a href=\"/toggle-pixelflood\">pixelflood</a> %s<br><a href=\"/toggle-mqtt-text\">MQTT text</a> %s<br><a href=\"/toggle-mqtt-bitmap\">MQTT bitmap</a> %s<br><a href=\"/toggle-multicast\">multicast</a> %s<br><a href=\"/toggle-screensaver\">screensaver</a> %s<br><a href=\"/toggle-ddp\">ddp</a> %s</p></article><article><header><h2>what?</h2></header><p>Designed by <a href=\"mailto:folkert@komputilo.nl\">Folkert van Heusden</a>, see <a href=\"https://komputilo.nl/texts/lightbox/\">https://komputilo.nl/texts/lightbox/</a> for more details.</p></article></body></html>", tstr(enable_pixelflood), tstr(enable_mqtt_text), tstr(enable_mqtt_bitmap), tstr(enable_multicast), tstr(enable_screensaver), tstr(enable_ddp));
+  snprintf(p, sizeof work_buffer, "<!DOCTYPE html><html lang=\"en\"><head><title>komputilo.nl</title><link rel=\"icon\" type=\"image/x-icon\" href=\"/favicon.ico\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta charset=\"utf-8\"><link href=\"/simple.css\" rel=\"stylesheet\" type=\"text/css\"></head><body><h1>LightBox</h1><article><header><h2>revision</h2></header><p>Built on " __DATE__ " " __TIME__ "<br>GIT revision: " __GIT_REVISION__ "</p></article><article><header><h2>screenshot</h2></header><p><img src=\"/screendump.bmp\"></p></article><article><header><h2>toggles</h2></header><p><a href=\"/toggle-pixelflood\">pixelflood</a> %s<br><a href=\"/toggle-mqtt-text\">MQTT text</a> %s<br><a href=\"/toggle-mqtt-bitmap\">MQTT bitmap</a> %s<br><a href=\"/toggle-multicast\">multicast</a> %s<br><a href=\"/toggle-screensaver\">screensaver</a> %s<br><a href=\"/toggle-ddp\">ddp</a> %s</p></article><article><header><h2>what?</h2></header><p>Designed by <a href=\"mailto:folkert@komputilo.nl\">Folkert van Heusden</a>, see <a href=\"https://komputilo.nl/texts/lightbox/\">https://komputilo.nl/texts/lightbox/</a> for more details.</p></article></body></html>", tstr(enable_pixelflood), tstr(enable_mqtt_text), tstr(enable_mqtt_bitmap), tstr(enable_multicast), tstr(enable_screensaver), tstr(enable_ddp));
 	webServer->send(200, "text/html", p);
+}
+
+void handleSimpleCSS() {
+	webServer->send(200, "text/css", simple_css, simple_css_len);
 }
 
 void handleFavicon() {
@@ -500,6 +505,7 @@ void setup() {
 	webServer->on("/index.html",         handleRoot      );
 	webServer->on("/favicon.ico",        handleFavicon   );
 	webServer->on("/screendump.bmp",     handleScreendump);
+	webServer->on("/simple.css",         handleSimpleCSS );
 
   webServer->on("/toggle-pixelflood",  handleTogglePixelflood );
   webServer->on("/toggle-mqtt-text",   handleToggleMQTTText   );
