@@ -140,8 +140,7 @@ char bline1[10] { };
 char bline2[10] { };
 char bline3[10] { };
 
-void text(const char line[])
-{
+void text(const char line[]) {
   int n = strlen(line);
   if (n >= 10)
     n = 9;
@@ -565,8 +564,7 @@ void setup() {
 	Serial.println(F("Go!"));
 }
 
-void cls()
-{
+void cls() {
 	for(int z = 0; z < NP; z++) {
 		lc1.clearDisplay(z);
 		lc2.clearDisplay(z);
@@ -574,8 +572,7 @@ void cls()
 	}
 }
 
-bool getPixel(const int x, const int y)
-{
+bool getPixel(const int x, const int y) {
 	if (x >= 64 || x < 0 || y >= 24 || y < 0)
 		return false;
 
@@ -589,8 +586,7 @@ bool getPixel(const int x, const int y)
 	return !!(data[o] & mask);
 }
 
-void printRow(int o, const char what[])
-{
+void printRow(int o, const char what[]) {
   int n = strlen(what);
   for(int i=0; i<n; i++) {
     int c = what[i];
@@ -656,8 +652,7 @@ std::pair<int, int> getNextPoint(int x, int y, int dx, int dy, int cx, int cy, i
 	return { x3, y3 };
 }
 
-void getQuadrant(int bx, int by, int dx, int dy, int cx, int cy, int r, std::vector<std::pair<int, int> > *const out)
-{
+void getQuadrant(int bx, int by, int dx, int dy, int cx, int cy, int r, std::vector<std::pair<int, int> > *const out) {
 	int x = bx;
 	int y = by;
 
