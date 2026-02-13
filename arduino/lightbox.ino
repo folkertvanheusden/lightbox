@@ -29,6 +29,8 @@ WiFiServer tcpPixelfloodServer(1337);
 WiFiUDP    UdpDdp;
 WiFiUDP    UdpAnnounceDdp;
 
+WiFiUDP    UdpText;
+
 WiFiUDP    UdpAnnouncePixelflood;
 uint8_t    broadcast[4] { };
 
@@ -529,6 +531,8 @@ void setup() {
   UdpAnnounceDdp.begin(4048);
   UdpDdp.begin(4048);
 
+  UdpText.begin(5001);
+
   auto ip = WiFi.localIP();
   auto netmask = WiFi.subnetMask();
   broadcast[0] = ip[0] | (~netmask[0]);
@@ -918,6 +922,25 @@ void loop() {
         sendDdpAnnouncement(true, UdpDdp.remoteIP(), UdpDdp.remotePort());
       else
         handleDdpData(buffer, len);
+    }
+  }
+
+  int packetSizeText = UdpText.parsePacket();
+  if (packetSizeText) {
+    char buffer[32];
+    int len = UdpText.read(buffer, sizeof(buffer) - 1);
+    if (len >= 0)
+      buffer[len] = 0x00;
+
+    char *p = buffer;
+    for(;;) {
+      char *lf = strchr(p, '\n');
+      if (lf)
+        *lf = 0x00;
+      text(buffer);
+      if (!lf)
+        break;
+      p = lf + 1;
     }
   }
 
