@@ -31,6 +31,10 @@ WiFiUDP    UdpText;
 WiFiUDP    UdpAnnouncePixelflood;
 uint8_t    broadcast[4] { };
 
+char       mqtt_server      [64] { "vps001.komputilo.nl"   };
+char       mqtt_text_topic  [64] { "nurdspace/hek42ticker" };
+char       mqtt_bitmap_topic[64] { "nurdspace/hek42tocker" };
+
 #define BS  48
 struct pf {
   WiFiClient handle;
@@ -80,13 +84,31 @@ void putScreen() {
     ledupdate(lc3, &data[128]);
 }
 
+void getEEPROM(int offset, char *const to, int n) {
+  for(int i=0; i<n; i++)
+    to[i] = EEPROM.read(offset + i);
+}
+
 void readSettings() {
-  enable_pixelflood  = EEPROM.read(0);
-  enable_mqtt_text   = EEPROM.read(1);
-  enable_mqtt_bitmap = EEPROM.read(2);
-  enable_multicast   = EEPROM.read(3);
-  enable_screensaver = EEPROM.read(4);
-  enable_ddp         = EEPROM.read(5);
+  uint8_t lrc = 0x91;
+  for(uint16_t i=0; i<4095; i++)
+    lrc ^= EEPROM.read(i);
+  if (lrc == EEPROM.read(4095)) {
+    enable_pixelflood  = EEPROM.read(0);
+    enable_mqtt_text   = EEPROM.read(1);
+    enable_mqtt_bitmap = EEPROM.read(2);
+    enable_multicast   = EEPROM.read(3);
+    enable_screensaver = EEPROM.read(4);
+    enable_ddp         = EEPROM.read(5);
+    getEEPROM(  6, mqtt_server      , 64);
+    getEEPROM( 70, mqtt_text_topic  , 64);
+    getEEPROM(134, mqtt_bitmap_topic, 64);
+  }
+}
+
+void putEEPROM(int offset, const char *from, int n) {
+  for(int i=0; i<n; i++)
+    EEPROM.write(offset + i, from[i]);
 }
 
 void writeSettings() {
@@ -96,6 +118,15 @@ void writeSettings() {
   EEPROM.write(3, enable_multicast  );
   EEPROM.write(4, enable_screensaver);
   EEPROM.write(5, enable_ddp        );
+  putEEPROM(  6, mqtt_server,       64);
+  putEEPROM( 70, mqtt_text_topic,   64);
+  putEEPROM(134, mqtt_bitmap_topic, 64);
+
+  uint8_t lrc = 0x91;
+  for(uint16_t i=0; i<4095; i++)
+    lrc ^= EEPROM.read(i);
+  EEPROM.write(4095, lrc);
+
   EEPROM.commit();
 }
 
@@ -111,8 +142,9 @@ void MQTT_connect() {
 	mqttclient.loop();
 
 	if (!mqttclient.connected()) {
-		while (!mqttclient.connected()) {
-			Serial.println("Attempting MQTT connection... ");
+    do {
+			Serial.print("Attempting MQTT connection to ");
+      Serial.println(mqtt_server);
 
 			if (mqttclient.connect(name)) {
 				Serial.println(F("Connected"));
@@ -120,15 +152,16 @@ void MQTT_connect() {
 			}
 
 			delay(1000);
-		}
+    }
+		while (!mqttclient.connected());
 
 		Serial.println(F("MQTT Connected!"));
 
-		if (mqttclient.subscribe("nurdspace/hek42ticker") == false)
+		if (mqttclient.subscribe(mqtt_text_topic) == false)
 			Serial.println("subscribe failed");
 		else
 			Serial.println("subscribed");
-		if (mqttclient.subscribe("nurdspace/hek42tocker") == false)
+		if (mqttclient.subscribe(mqtt_bitmap_topic) == false)
 			Serial.println("subscribe failed");
 		else
 			Serial.println("subscribed");
@@ -295,8 +328,57 @@ void handleScreendump() {
 }
 
 void handleRoot() {
-  snprintf(p, sizeof work_buffer, "<!DOCTYPE html><html lang=\"en\"><head><title>komputilo.nl</title><link rel=\"icon\" type=\"image/x-icon\" href=\"/favicon.ico\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta charset=\"utf-8\"><link href=\"/simple.css\" rel=\"stylesheet\" type=\"text/css\"></head><body><header><h1>LightBox</h1></header><article><header><h2>revision</h2></header><p><dl><dt>Built on</dt><dd><time>" __DATE__ " " __TIME__ "</time></dt></dl><dt>GIT revision:</dt><dd>" __GIT_REVISION__ "</dd></dl></p><header><h2>screenshot</h2></header><p><img src=\"/screendump.bmp\" alt=\"screen shot\"></p><header><h2>toggles</h2></header><p><table><tr><th>what</th><th>state</th><tr><td><a href=\"/toggle-pixelflood\">pixelflood</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-mqtt-text\">MQTT text</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-mqtt-bitmap\">MQTT bitmap</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-multicast\">multicast</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-screensaver\">screensaver</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-ddp\">ddp</a></td><td>%s</td></tr></table><footer><header><h2>what?</h2></header><p>Designed by <a href=\"mailto:folkert@komputilo.nl\">Folkert van Heusden</a>, see <a href=\"https://komputilo.nl/texts/lightbox/\">https://komputilo.nl/texts/lightbox/</a> for more details.</p></footer></article></body></html>", tstr(enable_pixelflood), tstr(enable_mqtt_text), tstr(enable_mqtt_bitmap), tstr(enable_multicast), tstr(enable_screensaver), tstr(enable_ddp));
+  snprintf(p, sizeof work_buffer,
+      "<!DOCTYPE html><html lang=\"en\">"
+      "<head><title>komputilo.nl</title><link rel=\"icon\" type=\"image/x-icon\" href=\"/favicon.ico\" />"
+      "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+      "<meta charset=\"utf-8\"><link href=\"/simple.css\" rel=\"stylesheet\" type=\"text/css\"></head>"
+      "<body><header><h1>LightBox</h1></header><article><section><header><h2>revision</h2></header>"
+      "<p><dl><dt>Built on</dt><dd><time>" __DATE__ " " __TIME__ "</time></dt></dl><dt>GIT revision:</dt><dd>" __GIT_REVISION__ "</dd></dl></p></section>"
+      "<section><header><h2>screenshot</h2></header><p><img src=\"/screendump.bmp\" alt=\"screen shot\"></p></section>"
+      "<section><header><h2>toggles</h2></header><p><table><tr><th>what</th><th>state</th><tr><td><a href=\"/toggle-pixelflood\">pixelflood</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-mqtt-text\">MQTT text</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-mqtt-bitmap\">MQTT bitmap</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-multicast\">multicast</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-screensaver\">screensaver</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-ddp\">ddp</a></td><td>%s</td></tr></table></section>"
+      "<section><header><h2>MQTT settings</h2></header><p><form action=\"/set-mqtt\" enctype=\"application/x-www-form-urlencoded\" method=\"POST\"><table><tr><th>what</th><th>setting</th></tr><tr><td>server</td><td><input type=\"text\" id=\"mqtt-server\" name=\"mqtt-server\" value=\"%s\"></td></tr><tr><td>text topic</td><td><input type=\"text\" id=\"mqtt-text-topic\" name=\"mqtt-text-topic\" value=\"%s\"></td></tr><tr><td>bitmap topic</td><td><input type=\"text\" id=\"mqtt-bitmap-topic\" name=\"mqtt-bitmap-topic\" value=\"%s\"></td></tr><tr><td></td><td><input type=\"submit\"></td></tr></table></form></p></section>"
+      "<footer><header><h2>what?</h2></header><p>Designed by <a href=\"mailto:folkert@komputilo.nl\">Folkert van Heusden</a>, see <a href=\"https://komputilo.nl/texts/lightbox/\">https://komputilo.nl/texts/lightbox/</a> for more details.</p></footer></article></body></html>",
+      tstr(enable_pixelflood), tstr(enable_mqtt_text), tstr(enable_mqtt_bitmap), tstr(enable_multicast), tstr(enable_screensaver), tstr(enable_ddp),
+      mqtt_server, mqtt_text_topic, mqtt_bitmap_topic);
 	webServer->send(200, "text/html", p);
+}
+
+void restartMqtt() {
+  mqttclient.disconnect();
+	mqttclient.setServer(mqtt_server, 1883);
+}
+
+void handleSetMqtt() {
+  bool   fail = false;
+  String temp;
+
+  temp = webServer->arg("mqtt-server");
+  if (temp.length() < sizeof(mqtt_server))
+    strcpy(mqtt_server, temp.c_str());
+  else
+    fail = true;
+
+  temp = webServer->arg("mqtt-text-topic");
+  if (temp.length() < sizeof(mqtt_text_topic))
+    strcpy(mqtt_text_topic, temp.c_str());
+  else
+    fail = true;
+
+  temp = webServer->arg("mqtt-bitmap-topic");
+  if (temp.length() < sizeof(mqtt_bitmap_topic))
+    strcpy(mqtt_bitmap_topic, temp.c_str());
+  else
+    fail = true;
+
+  if (fail)
+    webServer->send(200, "text/html", "<html><head><meta http-equiv=\"refresh\" content=\"2; URL=/\" /></head><body>invalid parameters</body></html>");
+  else {
+    webServer->send(200, "text/html", "<html><head><meta http-equiv=\"refresh\" content=\"1; URL=/\" /></head><body>done</body></html>");
+    writeSettings();
+
+    restartMqtt();
+  }
 }
 
 void handleSimpleCSS() {
@@ -308,7 +390,7 @@ void handleFavicon() {
 }
 
 void sendTogglesPage() {
-	webServer->send(200, "text/html", "<html><head><meta http-equiv=\"refresh\" content=\"2; URL=/\" /></head><body>done</body></html>");
+	webServer->send(200, "text/html", "<html><head><meta http-equiv=\"refresh\" content=\"1; URL=/\" /></head><body>done</body></html>");
 }
 
 void handleTogglePixelflood() {
@@ -507,6 +589,8 @@ void setup() {
 	webServer->on("/screendump.bmp",     handleScreendump);
 	webServer->on("/simple.css",         handleSimpleCSS );
 
+	webServer->on("/set-mqtt",           HTTP_POST, handleSetMqtt);
+
   webServer->on("/toggle-pixelflood",  handleTogglePixelflood );
   webServer->on("/toggle-mqtt-text",   handleToggleMQTTText   );
   webServer->on("/toggle-mqtt-bitmap", handleToggleMQTTBitmap );
@@ -545,7 +629,7 @@ void setup() {
 	data[0] = 0;
   putScreen();
 
-	mqttclient.setServer("vps001.komputilo.nl", 1883);
+  restartMqtt();
 	mqttclient.setCallback(callback);
 
   text("Hello");
