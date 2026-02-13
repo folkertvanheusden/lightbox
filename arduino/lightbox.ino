@@ -236,6 +236,8 @@ const char *tstr(bool state) {
 }
 
 void handleScreendump() {
+  memset(work_buffer, 0x00, 54);
+
 #pragma pack(push, 1) // Ensure no padding
   struct BMPFileHeader {
     uint16_t bfType;
@@ -276,7 +278,7 @@ void handleScreendump() {
   uint8_t *rgb = &work_buffer[54];
   for(byte y=0; y<24; y++) {
     for(byte x=0; x<64; x++) {
-      int offset = y * 64 * 3 + x * 3;
+      int offset = (23 - y) * 64 * 3 + x * 3;
       rgb[offset + 2] = 255;
       if (getPixel(x, y)) {
         rgb[offset + 1] = 0;
