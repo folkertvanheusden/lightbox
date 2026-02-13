@@ -166,6 +166,8 @@ void setupWifi() {
 	if (!wifiManager.autoConnect(name))
 		reboot();
 
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
+
 	Serial.println(WiFi.localIP());
 }
 
