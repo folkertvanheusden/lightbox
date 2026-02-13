@@ -1,6 +1,6 @@
 #include <cstdint>
 
-constexpr const uint8_t font[][8][8] = {
+const uint8_t font[][8][8] PROGMEM = {
 	{
 		{ 0, 0, 0, 0, 0, 0, 0, 0 },
 		{ 0, 0, 0, 0, 0, 0, 0, 0 },

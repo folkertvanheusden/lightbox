@@ -593,8 +593,10 @@ void printRow(int o, const char what[])
   for(int i=0; i<n; i++) {
     int c = what[i];
     for(int y=0; y<8; y++) {
+      uint8_t buffer[8];
+      memcpy_P(buffer, font[c][y], 8);
       for(int x=0; x<8; x++)
-        setPixel(x + i * 7, o + y, font[c][y][x]);
+        setPixel(x + i * 7, o + y, buffer[x]);
     }
   }
 }
