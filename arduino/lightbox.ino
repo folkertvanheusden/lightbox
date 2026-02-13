@@ -542,24 +542,13 @@ void setup() {
 	mqttclient.setServer("vps001.komputilo.nl", 1883);
 	mqttclient.setCallback(callback);
 
+  text("Hello");
   snprintf(p, sizeof work_buffer, "%d.%d", ip[0], ip[1]);
   text(p);
   snprintf(p, sizeof work_buffer, ".%d.%d", ip[2], ip[3]);
   text(p);
   putScreen();
-  delay(1000);
-  for(byte i=0; i<10; i++) {
-    for(byte x=0; x<64; x++) {
-      setPixel(x,  0, !getPixel(x,  0));
-      setPixel(x, 23, !getPixel(x, 23));
-    }
-    for(int y=0; y<24; y++) {
-      setPixel( 0, y, !getPixel( 0, y));
-      setPixel(63, y, !getPixel(63, y));
-    }
-    putScreen();
-    delay(200);
-  }
+  delay(2000);
 
 	Serial.println(F("Go!"));
 }
