@@ -1028,6 +1028,7 @@ void loop() {
 			}
 
 			animate(mode);
+      drawn_anything = true;
 		}
 	}
 
