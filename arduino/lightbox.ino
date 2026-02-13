@@ -153,7 +153,14 @@ void text(const char line[])
   memcpy(bline3, line, n);
   bline3[n] = 0x00;
 
+  for(byte y=0; y<8; y++) {
+    memmove(&data[0], &data[8], 192 - 8);
+    memset(&data[192 - 8], 0x00, 8);
+    putScreen();
+    delay(50);
+  }
   cls();
+
   printRow(0, bline1);
   printRow(8, bline2);
   printRow(16, bline3);
