@@ -12,6 +12,7 @@ See https://komputilo.nl/texts/lightbox/ for more details.
 
 * listens on port 1337 for Pixelflood
 * listens on port 226.1.1.9:32009 for multicast LZJB encoded frames
+* listens on 4048 (UDP) for DDP: only RGB or grayscale (8 bit per component)
 
 
 * arduino/ contains the "firmware" for the ESP8266

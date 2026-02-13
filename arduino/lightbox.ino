@@ -25,6 +25,9 @@
 WiFiUDP    UdpMC;  // multicast LZJB compressed bitmap (64x24)
 WiFiServer tcpPixelfloodServer(1337);
 
+WiFiUDP    UdpDdp;
+WiFiUDP    UdpAnnounceDdp;
+
 WiFiUDP    UdpAnnouncePixelflood;
 uint8_t    broadcast[4] { };
 
@@ -65,6 +68,7 @@ bool enable_mqtt_text   = true;
 bool enable_mqtt_bitmap = true;
 bool enable_multicast   = true;
 bool enable_screensaver = true;
+bool enable_ddp         = true;
 
 uint8_t data[192];
 
@@ -80,14 +84,16 @@ void readSettings() {
   enable_mqtt_bitmap = EEPROM.read(2);
   enable_multicast   = EEPROM.read(3);
   enable_screensaver = EEPROM.read(4);
+  enable_ddp         = EEPROM.read(5);
 }
 
 void writeSettings() {
-  EEPROM.write(0, enable_pixelflood);
-  EEPROM.write(1, enable_mqtt_text);
+  EEPROM.write(0, enable_pixelflood );
+  EEPROM.write(1, enable_mqtt_text  );
   EEPROM.write(2, enable_mqtt_bitmap);
-  EEPROM.write(3, enable_multicast);
+  EEPROM.write(3, enable_multicast  );
   EEPROM.write(4, enable_screensaver);
+  EEPROM.write(5, enable_ddp        );
   EEPROM.commit();
 }
 
@@ -222,7 +228,7 @@ const char *tstr(bool state) {
 }
 
 void handleRoot() {
-  snprintf(page, sizeof page, "<!DOCTYPE html><html lang=\"en\"><head><title>komputilo.nl</title><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta charset=\"utf-8\"><link href=\"https://komputilo.nl/simple.css\" rel=\"stylesheet\" type=\"text/css\"></head><body><h1>LightBox</h1><article><header><h2>revision</h2></header><p>Built on " __DATE__ " " __TIME__ "<br>GIT revision: " __GIT_REVISION__ "</p></article><article><header><h2>toggles</h2></header><p><a href=\"/toggle-pixelflood\">pixelflood</a> %s<br><a href=\"/toggle-mqtt-text\">MQTT text</a> %s<br><a href=\"/toggle-mqtt-bitmap\">MQTT bitmap</a> %s<br><a href=\"/toggle-multicast\">multicast</a> %s<br><a href=\"/toggle-screensaver\">screensaver</a> %s</p></article><article><header><h2>what?</h2></header><p>Designed by <a href=\"mailto:folkert@komputilo.nl\">Folkert van Heusden</a>, see <a href=\"https://komputilo.nl/texts/lightbox/\">https://komputilo.nl/texts/lightbox/</a> for more details.</p></article></body></html>", tstr(enable_pixelflood), tstr(enable_mqtt_text), tstr(enable_mqtt_bitmap), tstr(enable_multicast), tstr(enable_screensaver));
+  snprintf(page, sizeof page, "<!DOCTYPE html><html lang=\"en\"><head><title>komputilo.nl</title><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta charset=\"utf-8\"><link href=\"https://komputilo.nl/simple.css\" rel=\"stylesheet\" type=\"text/css\"></head><body><h1>LightBox</h1><article><header><h2>revision</h2></header><p>Built on " __DATE__ " " __TIME__ "<br>GIT revision: " __GIT_REVISION__ "</p></article><article><header><h2>toggles</h2></header><p><a href=\"/toggle-pixelflood\">pixelflood</a> %s<br><a href=\"/toggle-mqtt-text\">MQTT text</a> %s<br><a href=\"/toggle-mqtt-bitmap\">MQTT bitmap</a> %s<br><a href=\"/toggle-multicast\">multicast</a> %s<br><a href=\"/toggle-screensaver\">screensaver</a> %s<br><a href=\"/toggle-ddp\">ddp</a> %s</p></article><article><header><h2>what?</h2></header><p>Designed by <a href=\"mailto:folkert@komputilo.nl\">Folkert van Heusden</a>, see <a href=\"https://komputilo.nl/texts/lightbox/\">https://komputilo.nl/texts/lightbox/</a> for more details.</p></article></body></html>", tstr(enable_pixelflood), tstr(enable_mqtt_text), tstr(enable_mqtt_bitmap), tstr(enable_multicast), tstr(enable_screensaver), tstr(enable_ddp));
 	webServer->send(200, "text/html", page);
 }
 
@@ -260,6 +266,13 @@ void handleToggleMulticast() {
 
 void handleToggleScreensaver() {
   enable_screensaver = !enable_screensaver;
+  writeSettings();
+  readSettings();
+  sendTogglesPage();
+}
+
+void handleToggleDdp() {
+  enable_ddp = !enable_ddp;
   writeSettings();
   readSettings();
   sendTogglesPage();
@@ -310,6 +323,81 @@ void ledupdate(LedControl & dev, const uint8_t *const buf) {
 	}
 }
 
+inline void setPixel(const int x, const int y, const bool c)
+{
+	int pixel_row = y / 8;
+	int matrix    = x / 8;
+	int matrix_y  = 7 - (y & 7);
+	int matrix_x  = x & 7;
+	int o         = pixel_row * 64 + matrix * 8 + matrix_y;
+	int mask      = 1 << matrix_x;
+
+	if (c)
+		data[o] |= mask;
+	else
+		data[o] &= ~mask;
+}
+
+void sendDdpAnnouncement(const bool wait, const IPAddress & ip, const uint16_t port) {
+  if (wait) {
+    static uint32_t prev_send = 0;
+    uint32_t        now       = millis();
+    if (now - prev_send < 1500)
+      return;
+    prev_send = now;
+  }
+
+	std::string     msg       = "{\"status\" { \"man\": \"www.komputilo.nl\", \"mod\": \"Lightbox DDP server\", \"ver\": \"0.1\" } }";
+	size_t          total_len = 10 + msg.size();
+	uint8_t        *buffer    = new uint8_t[total_len]();
+
+	buffer[0] = 64 | 4 | 1;  // version_1, reply, push
+	buffer[3] = 251;  // json status
+	buffer[8] = msg.size() >> 8;
+	buffer[9] = msg.size();
+	memcpy(&buffer[10], msg.c_str(), msg.size());
+
+  UdpAnnounceDdp.beginPacket(ip, port);
+  UdpAnnounceDdp.write(buffer, total_len);
+  UdpAnnounceDdp.endPacket();
+
+  delete [] buffer;
+ }
+
+void handleDdpData(const uint8_t *const buffer, const size_t n) {
+	if (n < 10)
+		return;
+	if ((buffer[0] >> 6) != 1) {  // unexpected version
+		Serial.println("DDP packet unknown version");
+		return;
+	}
+
+	bool has_timecode = buffer[0] & 16;
+
+  byte data_type = (buffer[2] >> 3) & 7;
+	if (data_type != 1 && data_type != 4)  // only RGB/grayscale
+		return;
+	if ((buffer[2] & 7) != 3)  // only 8 bits per pixel
+		return;
+
+	if (buffer[3] != 1 && buffer[3] != 255)  // output
+		return;
+
+	uint32_t offset = (buffer[4] << 24) | (buffer[5] << 16) | (buffer[6] << 8) | buffer[7];
+	uint16_t length = (buffer[8] << 8) | buffer[9];
+
+	int packet_start_index = has_timecode   ? 14 : 10;
+  int pixel_mul          = data_type == 1 ?  3 :  1;
+	for(size_t i=packet_start_index; i<std::min(size_t(packet_start_index + length), n); i += pixel_mul) {
+		unsigned offset_offseted = offset + i - packet_start_index;
+		int y = offset_offseted / (64 * pixel_mul);
+		if (y < 24) {
+			int x = (offset_offseted / pixel_mul) % 64;
+      setPixel(x, y, buffer[i + 0] >= 128);
+		}
+	}
+}
+
 void setup() {
 	Serial.begin(115200);
 	Serial.setDebugOutput(true);
@@ -352,6 +440,7 @@ void setup() {
   webServer->on("/toggle-mqtt-bitmap", handleToggleMQTTBitmap );
   webServer->on("/toggle-multicast",   handleToggleMulticast  );
 	webServer->on("/toggle-screensaver", handleToggleScreensaver);
+	webServer->on("/toggle-ddp",         handleToggleDdp        );
 
 	webServer->on("/description.xml", HTTP_GET, []() {
 			SSDP.schema(webServer->client());
@@ -371,6 +460,9 @@ void setup() {
 	UdpMC.beginMulticast(WiFi.localIP(), IPAddress(226, 1, 1, 9), 32009);
   tcpPixelfloodServer.begin();
   UdpAnnouncePixelflood.begin(1337);
+
+  UdpAnnounceDdp.begin(4048);
+  UdpDdp.begin(4048);
 
   auto ip = WiFi.localIP();
   auto netmask = WiFi.subnetMask();
@@ -415,21 +507,6 @@ void cls()
 		lc2.clearDisplay(z);
 		lc3.clearDisplay(z);
 	}
-}
-
-inline void setPixel(const int x, const int y, const bool c)
-{
-	int pixel_row = y / 8;
-	int matrix    = x / 8;
-	int matrix_y  = 7 - (y & 7);
-	int matrix_x  = x & 7;
-	int o         = pixel_row * 64 + matrix * 8 + matrix_y;
-	int mask      = 1 << matrix_x;
-
-	if (c)
-		data[o] |= mask;
-	else
-		data[o] &= ~mask;
 }
 
 bool getPixel(const int x, const int y)
@@ -755,13 +832,27 @@ void loop() {
 	uint32_t        now          = millis();
   if (enable_multicast) {
     int packetSizeMC = UdpMC.parsePacket();
-
     if (packetSizeMC) {
-      uint8_t data2[256];
-      int len = UdpMC.read(data2, 256);
-      lzjbDecompress(data2, data, len, 192);
+      uint8_t buffer[256];
+      int len = UdpMC.read(buffer, sizeof buffer);
+      lzjbDecompress(buffer, data, len, 192);
       drawn_anything = true;
       activity       = true;
+    }
+  }
+
+  if (enable_ddp) {
+    sendDdpAnnouncement(false, broadcast, 4048);
+
+    int packetSizeDdp = UdpDdp.parsePacket();
+    if (packetSizeDdp) {
+      uint8_t buffer[1512];
+      int len = UdpDdp.read(buffer, sizeof buffer);
+
+      if (buffer[3] == 251 && (buffer[0] & 2))
+        sendDdpAnnouncement(true, UdpDdp.remoteIP(), UdpDdp.remotePort());
+      else
+        handleDdpData(buffer, len);
     }
   }
 
