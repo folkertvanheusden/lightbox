@@ -25,20 +25,16 @@
 
 WiFiUDP    UdpMC;  // multicast LZJB compressed bitmap (64x24)
 WiFiServer tcpPixelfloodServer(1337);
-
 WiFiUDP    UdpDdp;
-WiFiUDP    UdpAnnounceDdp;
-
 WiFiUDP    UdpText;
-
 WiFiUDP    UdpAnnouncePixelflood;
 uint8_t    broadcast[4] { };
 
 #define BS  48
 struct pf {
-  WiFiClient *handle     { nullptr };
-  int         o          { 0       };
-  char        buffer[BS] {         };
+  WiFiClient handle;
+  int        o          { 0       };
+  char       buffer[BS] {         };
 };
 
 std::vector<pf> pfClients;
@@ -73,6 +69,8 @@ bool enable_multicast   = true;
 bool enable_screensaver = true;
 bool enable_ddp         = true;
 
+uint8_t work_buffer[4608];
+char   *const p = reinterpret_cast<char *>(work_buffer);
 uint8_t data[192];
 
 void putScreen() {
@@ -233,13 +231,10 @@ void enableOTA() {
 	Serial.println(F("Ready"));
 }
 
-char page[4096] { };
-
 const char *tstr(bool state) {
   return state ? "ON" : "OFF";
 }
 
-uint8_t bmp[54 + 64 * 24 * 3];
 void handleScreendump() {
 #pragma pack(push, 1) // Ensure no padding
   struct BMPFileHeader {
@@ -250,7 +245,7 @@ void handleScreendump() {
     uint32_t bfOffBits;
   };
 
-  BMPFileHeader *header1 = reinterpret_cast<BMPFileHeader *>(&bmp[0]);
+  BMPFileHeader *header1 = reinterpret_cast<BMPFileHeader *>(&work_buffer[0]);
   header1->bfType = 0x4d42;
   header1->bfOffBits = 54;
 
@@ -267,7 +262,7 @@ void handleScreendump() {
     uint32_t biClrUsed;
     uint32_t biClrImportant;
   };
-  BMPInfoHeader *header2 = reinterpret_cast<BMPInfoHeader *>(&bmp[14]);
+  BMPInfoHeader *header2 = reinterpret_cast<BMPInfoHeader *>(&work_buffer[14]);
   header2->biSize = 40;
   header2->biWidth = 64;
   header2->biHeight = 24;
@@ -278,7 +273,7 @@ void handleScreendump() {
   header1->bfSize = 54 + header2->biSizeImage;
 #pragma pack(pop)
 
-  uint8_t *rgb = &bmp[54];
+  uint8_t *rgb = &work_buffer[54];
   for(byte y=0; y<24; y++) {
     for(byte x=0; x<64; x++) {
       int offset = y * 64 * 3 + x * 3;
@@ -294,12 +289,12 @@ void handleScreendump() {
     }
   }
 
-	webServer->send(200, "image/bmp", bmp, sizeof bmp);
+	webServer->send(200, "image/bmp", work_buffer, header1->bfSize);
 }
 
 void handleRoot() {
-  snprintf(page, sizeof page, "<!DOCTYPE html><html lang=\"en\"><head><title>komputilo.nl</title><link rel=\"icon\" type=\"image/x-icon\" href=\"/favicon.ico\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta charset=\"utf-8\"><link href=\"https://komputilo.nl/simple.css\" rel=\"stylesheet\" type=\"text/css\"></head><body><h1>LightBox</h1><article><header><h2>revision</h2></header><p>Built on " __DATE__ " " __TIME__ "<br>GIT revision: " __GIT_REVISION__ "</p></article><article><header><h2>screenshot</h2></header><p><img src=\"/screendump.bmp\"></p></article><article><header><h2>toggles</h2></header><p><a href=\"/toggle-pixelflood\">pixelflood</a> %s<br><a href=\"/toggle-mqtt-text\">MQTT text</a> %s<br><a href=\"/toggle-mqtt-bitmap\">MQTT bitmap</a> %s<br><a href=\"/toggle-multicast\">multicast</a> %s<br><a href=\"/toggle-screensaver\">screensaver</a> %s<br><a href=\"/toggle-ddp\">ddp</a> %s</p></article><article><header><h2>what?</h2></header><p>Designed by <a href=\"mailto:folkert@komputilo.nl\">Folkert van Heusden</a>, see <a href=\"https://komputilo.nl/texts/lightbox/\">https://komputilo.nl/texts/lightbox/</a> for more details.</p></article></body></html>", tstr(enable_pixelflood), tstr(enable_mqtt_text), tstr(enable_mqtt_bitmap), tstr(enable_multicast), tstr(enable_screensaver), tstr(enable_ddp));
-	webServer->send(200, "text/html", page);
+  snprintf(p, sizeof work_buffer, "<!DOCTYPE html><html lang=\"en\"><head><title>komputilo.nl</title><link rel=\"icon\" type=\"image/x-icon\" href=\"/favicon.ico\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta charset=\"utf-8\"><link href=\"https://komputilo.nl/simple.css\" rel=\"stylesheet\" type=\"text/css\"></head><body><h1>LightBox</h1><article><header><h2>revision</h2></header><p>Built on " __DATE__ " " __TIME__ "<br>GIT revision: " __GIT_REVISION__ "</p></article><article><header><h2>screenshot</h2></header><p><img src=\"/screendump.bmp\"></p></article><article><header><h2>toggles</h2></header><p><a href=\"/toggle-pixelflood\">pixelflood</a> %s<br><a href=\"/toggle-mqtt-text\">MQTT text</a> %s<br><a href=\"/toggle-mqtt-bitmap\">MQTT bitmap</a> %s<br><a href=\"/toggle-multicast\">multicast</a> %s<br><a href=\"/toggle-screensaver\">screensaver</a> %s<br><a href=\"/toggle-ddp\">ddp</a> %s</p></article><article><header><h2>what?</h2></header><p>Designed by <a href=\"mailto:folkert@komputilo.nl\">Folkert van Heusden</a>, see <a href=\"https://komputilo.nl/texts/lightbox/\">https://komputilo.nl/texts/lightbox/</a> for more details.</p></article></body></html>", tstr(enable_pixelflood), tstr(enable_mqtt_text), tstr(enable_mqtt_bitmap), tstr(enable_multicast), tstr(enable_screensaver), tstr(enable_ddp));
+	webServer->send(200, "text/html", p);
 }
 
 void handleFavicon() {
@@ -421,21 +416,15 @@ void sendDdpAnnouncement(const bool wait, const IPAddress & ip, const uint16_t p
     prev_send = now;
   }
 
-	std::string     msg       = "{\"status\" { \"man\": \"www.komputilo.nl\", \"mod\": \"Lightbox DDP server\", \"ver\": \"0.1\" } }";
-	size_t          total_len = 10 + msg.size();
-	uint8_t        *buffer    = new uint8_t[total_len]();
+	work_buffer[0] = 64 | 4 | 1;  // version_1, reply, push
+	work_buffer[3] = 251;  // json status
+  int msg_len = snprintf(&p[10], sizeof work_buffer - 10, "{\"status\" { \"man\": \"www.komputilo.nl\", \"mod\": \"Lightbox DDP server\", \"ver\": \"0.1\" } }");
+	work_buffer[8] = msg_len >> 8;
+	work_buffer[9] = msg_len;
 
-	buffer[0] = 64 | 4 | 1;  // version_1, reply, push
-	buffer[3] = 251;  // json status
-	buffer[8] = msg.size() >> 8;
-	buffer[9] = msg.size();
-	memcpy(&buffer[10], msg.c_str(), msg.size());
-
-  UdpAnnounceDdp.beginPacket(ip, port);
-  UdpAnnounceDdp.write(buffer, total_len);
-  UdpAnnounceDdp.endPacket();
-
-  delete [] buffer;
+  UdpDdp.beginPacket(ip, port);
+  UdpDdp.write(work_buffer, msg_len + 10);
+  UdpDdp.endPacket();
  }
 
 void handleDdpData(const uint8_t *const buffer, const size_t n) {
@@ -535,7 +524,6 @@ void setup() {
   tcpPixelfloodServer.begin();
   UdpAnnouncePixelflood.begin(1337);
 
-  UdpAnnounceDdp.begin(4048);
   UdpDdp.begin(4048);
 
   UdpText.begin(5001);
@@ -553,11 +541,10 @@ void setup() {
 	mqttclient.setServer("vps001.komputilo.nl", 1883);
 	mqttclient.setCallback(callback);
 
-  char buffer[24] { };
-  snprintf(buffer, sizeof buffer, "%d.%d", ip[0], ip[1]);
-  text(buffer);
-  snprintf(buffer, sizeof buffer, ".%d.%d", ip[2], ip[3]);
-  text(buffer);
+  snprintf(p, sizeof work_buffer, "%d.%d", ip[0], ip[1]);
+  text(p);
+  snprintf(p, sizeof work_buffer, ".%d.%d", ip[2], ip[3]);
+  text(p);
   putScreen();
   delay(1000);
   for(byte i=0; i<10; i++) {
@@ -697,7 +684,7 @@ void animate(int mode) {
 		static int y = 0;
 		static int d = 1;
 
-		memset(data, 0x00, sizeof data);
+		cls();
 		for(int x=0; x<64; x++)
 			setPixel(x, y, true);
 
@@ -715,7 +702,7 @@ void animate(int mode) {
 		static int x = 0;
 		static int y = 0;
 
-		memset(data, 0x00, sizeof data);
+    cls();
 		setPixel(x, y, true);
 
 		x++;
@@ -754,7 +741,7 @@ bool processPixelflood(size_t nr) {
     *lf = 0x00;
 
     if (strcmp(buf, "SIZE") == 0) {
-      pfClients.at(nr).handle->print("SIZE 64 24\n");
+      pfClients.at(nr).handle.print("SIZE 64 24\n");
     }
     else if (lf - buf < 13) {
       return false;
@@ -821,11 +808,10 @@ void sendPixelfloodAnnouncement() {
   if (now - prev_send < 1500)
     return;
   prev_send = now;
-  char msg[64] { };
   auto ip = WiFi.localIP();
-  snprintf(msg, sizeof msg, "pixelvloed:1.00 %d.%d.%d.%d:1337 64*24", ip[0], ip[1], ip[2], ip[3]);
+  snprintf(p, sizeof work_buffer, "pixelvloed:1.00 %d.%d.%d.%d:1337 64*24", ip[0], ip[1], ip[2], ip[3]);
   UdpAnnouncePixelflood.beginPacket(broadcast, 1337);
-  UdpAnnouncePixelflood.write(msg);
+  UdpAnnouncePixelflood.write(p);
   UdpAnnouncePixelflood.endPacket();
 }
 
@@ -845,8 +831,7 @@ void loop() {
     if (newPixelfloodClient) {
       // check if all still there
       for(size_t i=0; i<pfClients.size();) {
-        if (pfClients.at(i).handle->connected() == false) {
-          delete pfClients[i].handle;
+        if (pfClients.at(i).handle.connected() == false) {
           pfClients.erase(pfClients.begin() + i);
         }
         else {
@@ -855,19 +840,18 @@ void loop() {
       }
       // max 32 clients
       while(pfClients.size() > 32) {
-        delete pfClients[0].handle;
         pfClients.erase(pfClients.begin());
         Serial.println("CLOSE SESSION");
       }
 
-      pfClients.push_back({ new WiFiClient(newPixelfloodClient), 0 });
+      pfClients.push_back({ WiFiClient(newPixelfloodClient), 0 });
 
       activity = true;
     }
 
     // check pixelflood clients for data
     for(size_t i=0; i<pfClients.size(); i++) {
-      int nAvail = pfClients[i].handle->available();
+      int nAvail = pfClients[i].handle.available();
       if (nAvail == 0)
         continue;
       activity = true;
@@ -875,7 +859,7 @@ void loop() {
       bool fail = false;
       for(int nr=0; nr<nAvail; nr++) {
         // read & add to buffer unless it is still full (when full, it is invalid)
-        int c = pfClients[i].handle->read();
+        int c = pfClients[i].handle.read();
         if (c == -1)
           fail = true;
         else if (pfClients[i].o >= BS)  // sanity check
@@ -896,7 +880,7 @@ void loop() {
 
         if (fail) {
           Serial.println("FAIL");
-          pfClients[i].handle->stop();
+          pfClients[i].handle.stop();
           break;
         }
       }
@@ -909,9 +893,8 @@ void loop() {
   if (enable_multicast) {
     int packetSizeMC = UdpMC.parsePacket();
     if (packetSizeMC) {
-      uint8_t buffer[256];
-      int len = UdpMC.read(buffer, sizeof buffer);
-      lzjbDecompress(buffer, data, len, 192);
+      int len = UdpMC.read(work_buffer, sizeof work_buffer);
+      lzjbDecompress(work_buffer, data, len, 192);
       drawn_anything = true;
       activity       = true;
     }
@@ -922,32 +905,30 @@ void loop() {
 
     int packetSizeDdp = UdpDdp.parsePacket();
     if (packetSizeDdp) {
-      uint8_t buffer[1512];
-      int len = UdpDdp.read(buffer, sizeof buffer);
+      int len = UdpDdp.read(work_buffer, sizeof work_buffer);
 
-      if (buffer[3] == 251 && (buffer[0] & 2))
+      if (work_buffer[3] == 251 && (work_buffer[0] & 2))
         sendDdpAnnouncement(true, UdpDdp.remoteIP(), UdpDdp.remotePort());
       else
-        handleDdpData(buffer, len);
+        handleDdpData(work_buffer, len);
     }
   }
 
   int packetSizeText = UdpText.parsePacket();
   if (packetSizeText) {
-    char buffer[32];
-    int len = UdpText.read(buffer, sizeof(buffer) - 1);
+    int len = UdpText.read(work_buffer, 9 * 3 + 1);
     if (len >= 0)
-      buffer[len] = 0x00;
+      work_buffer[len] = 0x00;
 
-    char *p = buffer;
+    char *p_work = p;
     for(;;) {
-      char *lf = strchr(p, '\n');
+      char *lf = strchr(p_work, '\n');
       if (lf)
         *lf = 0x00;
-      text(buffer);
+      text(p_work);
       if (!lf)
         break;
-      p = lf + 1;
+      p_work = lf + 1;
     }
   }
 
