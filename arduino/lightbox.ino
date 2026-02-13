@@ -20,6 +20,7 @@
 #include <string>
 
 #include "font.h"
+#include "favicon.h"
 
 
 WiFiUDP    UdpMC;  // multicast LZJB compressed bitmap (64x24)
@@ -227,9 +228,71 @@ const char *tstr(bool state) {
   return state ? "ON" : "OFF";
 }
 
+uint8_t bmp[54 + 64 * 24 * 3];
+void handleScreendump() {
+#pragma pack(push, 1) // Ensure no padding
+  struct BMPFileHeader {
+    uint16_t bfType;
+    uint32_t bfSize;
+    uint16_t bfReserved1;
+    uint16_t bfReserved2;
+    uint32_t bfOffBits;
+  };
+
+  BMPFileHeader *header1 = reinterpret_cast<BMPFileHeader *>(&bmp[0]);
+  header1->bfType = 0x4d42;
+  header1->bfOffBits = 54;
+
+  struct BMPInfoHeader {
+    uint32_t biSize;
+    int32_t  biWidth;
+    int32_t  biHeight;
+    uint16_t biPlanes;
+    uint16_t biBitCount;
+    uint32_t biCompression;
+    uint32_t biSizeImage;
+    int32_t  biXPelsPerMeter;
+    int32_t  biYPelsPerMeter;
+    uint32_t biClrUsed;
+    uint32_t biClrImportant;
+  };
+  BMPInfoHeader *header2 = reinterpret_cast<BMPInfoHeader *>(&bmp[14]);
+  header2->biSize = 40;
+  header2->biWidth = 64;
+  header2->biHeight = 24;
+  header2->biSizeImage = 64 * 24 * 3;
+  header2->biPlanes = 1;
+  header2->biBitCount = 24;
+
+  header1->bfSize = 54 + header2->biSizeImage;
+#pragma pack(pop)
+
+  uint8_t *rgb = &bmp[54];
+  for(byte y=0; y<24; y++) {
+    for(byte x=0; x<64; x++) {
+      int offset = y * 64 * 3 + x * 3;
+      rgb[offset + 2] = 255;
+      if (getPixel(x, y)) {
+        rgb[offset + 1] = 0;
+        rgb[offset + 0] = 0;
+      }
+      else {
+        rgb[offset + 1] = 255;
+        rgb[offset + 0] = 255;
+      }
+    }
+  }
+
+	webServer->send(200, "image/bmp", bmp, sizeof bmp);
+}
+
 void handleRoot() {
-  snprintf(page, sizeof page, "<!DOCTYPE html><html lang=\"en\"><head><title>komputilo.nl</title><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta charset=\"utf-8\"><link href=\"https://komputilo.nl/simple.css\" rel=\"stylesheet\" type=\"text/css\"></head><body><h1>LightBox</h1><article><header><h2>revision</h2></header><p>Built on " __DATE__ " " __TIME__ "<br>GIT revision: " __GIT_REVISION__ "</p></article><article><header><h2>toggles</h2></header><p><a href=\"/toggle-pixelflood\">pixelflood</a> %s<br><a href=\"/toggle-mqtt-text\">MQTT text</a> %s<br><a href=\"/toggle-mqtt-bitmap\">MQTT bitmap</a> %s<br><a href=\"/toggle-multicast\">multicast</a> %s<br><a href=\"/toggle-screensaver\">screensaver</a> %s<br><a href=\"/toggle-ddp\">ddp</a> %s</p></article><article><header><h2>what?</h2></header><p>Designed by <a href=\"mailto:folkert@komputilo.nl\">Folkert van Heusden</a>, see <a href=\"https://komputilo.nl/texts/lightbox/\">https://komputilo.nl/texts/lightbox/</a> for more details.</p></article></body></html>", tstr(enable_pixelflood), tstr(enable_mqtt_text), tstr(enable_mqtt_bitmap), tstr(enable_multicast), tstr(enable_screensaver), tstr(enable_ddp));
+  snprintf(page, sizeof page, "<!DOCTYPE html><html lang=\"en\"><head><title>komputilo.nl</title><link rel=\"icon\" type=\"image/x-icon\" href=\"/favicon.ico\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta charset=\"utf-8\"><link href=\"https://komputilo.nl/simple.css\" rel=\"stylesheet\" type=\"text/css\"></head><body><h1>LightBox</h1><article><header><h2>revision</h2></header><p>Built on " __DATE__ " " __TIME__ "<br>GIT revision: " __GIT_REVISION__ "</p></article><article><header><h2>screenshot</h2></header><p><img src=\"/screendump.bmp\"></p></article><article><header><h2>toggles</h2></header><p><a href=\"/toggle-pixelflood\">pixelflood</a> %s<br><a href=\"/toggle-mqtt-text\">MQTT text</a> %s<br><a href=\"/toggle-mqtt-bitmap\">MQTT bitmap</a> %s<br><a href=\"/toggle-multicast\">multicast</a> %s<br><a href=\"/toggle-screensaver\">screensaver</a> %s<br><a href=\"/toggle-ddp\">ddp</a> %s</p></article><article><header><h2>what?</h2></header><p>Designed by <a href=\"mailto:folkert@komputilo.nl\">Folkert van Heusden</a>, see <a href=\"https://komputilo.nl/texts/lightbox/\">https://komputilo.nl/texts/lightbox/</a> for more details.</p></article></body></html>", tstr(enable_pixelflood), tstr(enable_mqtt_text), tstr(enable_mqtt_bitmap), tstr(enable_multicast), tstr(enable_screensaver), tstr(enable_ddp));
 	webServer->send(200, "text/html", page);
+}
+
+void handleFavicon() {
+	webServer->send(200, "image/x-icon", favicon_ico, favicon_ico_len);
 }
 
 void sendTogglesPage() {
@@ -432,8 +495,10 @@ void setup() {
 
 	webServer = new ESP8266WebServer(80);
 
-	webServer->on("/", handleRoot);
-	webServer->on("/index.html", handleRoot);
+	webServer->on("/",                   handleRoot      );
+	webServer->on("/index.html",         handleRoot      );
+	webServer->on("/favicon.ico",        handleFavicon   );
+	webServer->on("/screendump.bmp",     handleScreendump);
 
   webServer->on("/toggle-pixelflood",  handleTogglePixelflood );
   webServer->on("/toggle-mqtt-text",   handleToggleMQTTText   );
@@ -442,9 +507,7 @@ void setup() {
 	webServer->on("/toggle-screensaver", handleToggleScreensaver);
 	webServer->on("/toggle-ddp",         handleToggleDdp        );
 
-	webServer->on("/description.xml", HTTP_GET, []() {
-			SSDP.schema(webServer->client());
-			});
+	webServer->on("/description.xml", HTTP_GET, []() { SSDP.schema(webServer->client()); });
 
 	httpUpdater.setup(webServer);
 
