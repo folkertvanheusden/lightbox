@@ -903,8 +903,11 @@ void loop() {
 
       if (work_buffer[3] == 251 && (work_buffer[0] & 2))
         sendDdpAnnouncement(true, UdpDdp.remoteIP(), UdpDdp.remotePort());
-      else
+      else {
         handleDdpData(work_buffer, len);
+        drawn_anything = true;
+        activity       = true;
+      }
     }
   }
 
