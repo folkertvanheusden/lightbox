@@ -1,7 +1,7 @@
-// (C) 2019-2024 by Folkert van Heusden <mail@vanheusden.com>
+// (C) 2019-2026 by Folkert van Heusden <mail@vanheusden.com>
 
 #include "LedControl.h"
-
+#include <EEPROM.h>
 #include <ESP8266WiFi.h>          // https://github.com/esp8266/Arduino
 
 #include <PubSubClient.h>
@@ -60,12 +60,35 @@ LedControl lc1 = LedControl(D1, D2, D3, NP);
 LedControl lc2 = LedControl(D1, D2, D4, NP);
 LedControl lc3 = LedControl(D1, D2, D5, NP);
 
+bool enable_pixelflood  = true;
+bool enable_mqtt_text   = true;
+bool enable_mqtt_bitmap = true;
+bool enable_multicast   = true;
+bool enable_screensaver = true;
+
 uint8_t data[192];
 
 void putScreen() {
     ledupdate(lc1, &data[0]);
     ledupdate(lc2, &data[64]);
     ledupdate(lc3, &data[128]);
+}
+
+void readSettings() {
+  enable_pixelflood  = EEPROM.read(0);
+  enable_mqtt_text   = EEPROM.read(1);
+  enable_mqtt_bitmap = EEPROM.read(2);
+  enable_multicast   = EEPROM.read(3);
+  enable_screensaver = EEPROM.read(4);
+}
+
+void writeSettings() {
+  EEPROM.write(0, enable_pixelflood);
+  EEPROM.write(1, enable_mqtt_text);
+  EEPROM.write(2, enable_mqtt_bitmap);
+  EEPROM.write(3, enable_multicast);
+  EEPROM.write(4, enable_screensaver);
+  EEPROM.commit();
 }
 
 void reboot() {
@@ -192,13 +215,54 @@ void enableOTA() {
 	Serial.println(F("Ready"));
 }
 
-constexpr const char page[] = "<!DOCTYPE html><html lang=\"en\"><head><title>komputilo.nl</title><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta charset=\"utf-8\"><link href=\"https://komputilo.nl/simple.css\" rel=\"stylesheet\" type=\"text/css\"></head><body><h1>LightBox</h1><article><header><h2>revision</h2></header><p>Built on " __DATE__ " " __TIME__ "<br>GIT revision: " __GIT_REVISION__ "</p></article><article><header><h2>what?</h2></header><p>Designed by <a href=\"mailto:folkert@komputilo.nl\">Folkert van Heusden</a>, see <a href=\"https://komputilo.nl/texts/lightbox/\">https://komputilo.nl/texts/lightbox/</a> for more details.</p></article></body></html>\n";
+char page[4096] { };
 
-void handleRoot() {
-	webServer -> send(200, "text/html", page);
+const char *tstr(bool state) {
+  return state ? "ON" : "OFF";
 }
 
-void handleNurdspace_cgi() {
+void handleRoot() {
+  snprintf(page, sizeof page, "<!DOCTYPE html><html lang=\"en\"><head><title>komputilo.nl</title><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta charset=\"utf-8\"><link href=\"https://komputilo.nl/simple.css\" rel=\"stylesheet\" type=\"text/css\"></head><body><h1>LightBox</h1><article><header><h2>revision</h2></header><p>Built on " __DATE__ " " __TIME__ "<br>GIT revision: " __GIT_REVISION__ "</p></article><article><header><h2>toggles</h2></header><p><a href=\"/toggle-pixelflood\">pixelflood</a> %s<br><a href=\"/toggle-mqtt-text\">MQTT text</a> %s<br><a href=\"/toggle-mqtt-bitmap\">MQTT bitmap</a> %s<br><a href=\"/toggle-multicast\">multicast</a> %s<br><a href=\"/toggle-screensaver\">screensaver</a> %s</p></article><article><header><h2>what?</h2></header><p>Designed by <a href=\"mailto:folkert@komputilo.nl\">Folkert van Heusden</a>, see <a href=\"https://komputilo.nl/texts/lightbox/\">https://komputilo.nl/texts/lightbox/</a> for more details.</p></article></body></html>", tstr(enable_pixelflood), tstr(enable_mqtt_text), tstr(enable_mqtt_bitmap), tstr(enable_multicast), tstr(enable_screensaver));
+	webServer->send(200, "text/html", page);
+}
+
+void sendTogglesPage() {
+	webServer->send(200, "text/html", "<html><head><meta http-equiv=\"refresh\" content=\"2; URL=/\" /></head><body>done</body></html>");
+}
+
+void handleTogglePixelflood() {
+  enable_pixelflood = !enable_pixelflood;
+  writeSettings();
+  readSettings();
+  sendTogglesPage();
+}
+
+void handleToggleMQTTText() {
+  enable_mqtt_text = !enable_mqtt_text;
+  writeSettings();
+  readSettings();
+  sendTogglesPage();
+}
+
+void handleToggleMQTTBitmap() {
+  enable_mqtt_bitmap = !enable_mqtt_bitmap;
+  writeSettings();
+  readSettings();
+  sendTogglesPage();
+}
+
+void handleToggleMulticast() {
+  enable_multicast = !enable_multicast;
+  writeSettings();
+  readSettings();
+  sendTogglesPage();
+}
+
+void handleToggleScreensaver() {
+  enable_screensaver = !enable_screensaver;
+  writeSettings();
+  readSettings();
+  sendTogglesPage();
 }
 
 #define MATCH_BITS  6
@@ -268,6 +332,9 @@ void setup() {
 	data[0] = 1;
   putScreen();
 
+  EEPROM.begin(4096);
+  readSettings();
+
 	enableOTA();
 
 	setupWifi();
@@ -277,17 +344,22 @@ void setup() {
 
 	webServer = new ESP8266WebServer(80);
 
-	webServer -> on("/", handleRoot);
-	webServer -> on("/index.html", handleRoot);
-	webServer -> on("/nurdspage.cgi", handleNurdspace_cgi);
+	webServer->on("/", handleRoot);
+	webServer->on("/index.html", handleRoot);
 
-	webServer -> on("/description.xml", HTTP_GET, []() {
-			SSDP.schema(webServer -> client());
+  webServer->on("/toggle-pixelflood",  handleTogglePixelflood );
+  webServer->on("/toggle-mqtt-text",   handleToggleMQTTText   );
+  webServer->on("/toggle-mqtt-bitmap", handleToggleMQTTBitmap );
+  webServer->on("/toggle-multicast",   handleToggleMulticast  );
+	webServer->on("/toggle-screensaver", handleToggleScreensaver);
+
+	webServer->on("/description.xml", HTTP_GET, []() {
+			SSDP.schema(webServer->client());
 			});
 
 	httpUpdater.setup(webServer);
 
-	webServer -> begin();
+	webServer->begin();
 
 	startMDNS();
 
@@ -395,14 +467,18 @@ void callback(const char topic[], byte *payload, unsigned int len) {
     if (len >= 10)
       len = 9;
 
-    char temp[10];
-    memcpy(temp, payload, len);
-    temp[len] = 0x00;
-    text(temp);
+    if (enable_mqtt_text) {
+      char temp[10];
+      memcpy(temp, payload, len);
+      temp[len] = 0x00;
+      text(temp);
+    }
   }
   else {
-    lzjbDecompress(payload, data, len, 192);
-    putScreen();
+    if (enable_mqtt_bitmap) {
+      lzjbDecompress(payload, data, len, 192);
+      putScreen();
+    }
   }
 }
 
@@ -514,8 +590,6 @@ void animate(int mode) {
 	else {
 		cls();
 	}
-
-  putScreen();
 }
 
 bool processPixelflood(size_t nr) {
@@ -606,69 +680,72 @@ void loop() {
 	webServer->handleClient();
 	ArduinoOTA.handle();
   MQTT_connect();
-  sendPixelfloodAnnouncement();
 
-  bool activity = false;
-
-  // pixelflood connection management
-  WiFiClient newPixelfloodClient = tcpPixelfloodServer.available();
-  if (newPixelfloodClient) {
-    // check if all still there
-    for(size_t i=0; i<pfClients.size();) {
-      if (pfClients.at(i).handle->connected() == false) {
-        delete pfClients[i].handle;
-        pfClients.erase(pfClients.begin() + i);
-      }
-      else {
-        i++;
-      }
-    }
-    // max 32 clients
-    while(pfClients.size() > 32) {
-      delete pfClients[0].handle;
-      pfClients.erase(pfClients.begin());
-      Serial.println("CLOSE SESSION");
-    }
-
-    pfClients.push_back({ new WiFiClient(newPixelfloodClient), 0 });
-
-    activity = true;
-  }
-
-  // check pixelflood clients for data
+  bool activity       = false;
   bool drawn_anything = false;
-  for(size_t i=0; i<pfClients.size(); i++) {
-    int nAvail = pfClients[i].handle->available();
-    if (nAvail == 0)
-      continue;
-    activity = true;
-    // read data from socket until \n is received (a complete pixelflood "packet")
-    bool fail = false;
-    for(int nr=0; nr<nAvail; nr++) {
-      // read & add to buffer unless it is still full (when full, it is invalid)
-      int c = pfClients[i].handle->read();
-      if (c == -1)
-        fail = true;
-      else if (pfClients[i].o >= BS)  // sanity check
-      { Serial.printf("too much data %d %d\r\n", pfClients[i].o, BS);
-        Serial.println(pfClients[i].buffer);
-        fail = true;
-      }
-      else
-        pfClients[i].buffer[pfClients[i].o++] = char(c);
 
-      if (c == '\n') {
-        pfClients[i].buffer[BS - 1] = 0x00;
-        if (processPixelflood(i))
-          drawn_anything = true;
-        else
+  if (enable_pixelflood) {
+    sendPixelfloodAnnouncement();
+
+    // pixelflood connection management
+    WiFiClient newPixelfloodClient = tcpPixelfloodServer.available();
+    if (newPixelfloodClient) {
+      // check if all still there
+      for(size_t i=0; i<pfClients.size();) {
+        if (pfClients.at(i).handle->connected() == false) {
+          delete pfClients[i].handle;
+          pfClients.erase(pfClients.begin() + i);
+        }
+        else {
+          i++;
+        }
+      }
+      // max 32 clients
+      while(pfClients.size() > 32) {
+        delete pfClients[0].handle;
+        pfClients.erase(pfClients.begin());
+        Serial.println("CLOSE SESSION");
+      }
+
+      pfClients.push_back({ new WiFiClient(newPixelfloodClient), 0 });
+
+      activity = true;
+    }
+
+    // check pixelflood clients for data
+    for(size_t i=0; i<pfClients.size(); i++) {
+      int nAvail = pfClients[i].handle->available();
+      if (nAvail == 0)
+        continue;
+      activity = true;
+      // read data from socket until \n is received (a complete pixelflood "packet")
+      bool fail = false;
+      for(int nr=0; nr<nAvail; nr++) {
+        // read & add to buffer unless it is still full (when full, it is invalid)
+        int c = pfClients[i].handle->read();
+        if (c == -1)
           fail = true;
-      }
+        else if (pfClients[i].o >= BS)  // sanity check
+        { Serial.printf("too much data %d %d\r\n", pfClients[i].o, BS);
+          Serial.println(pfClients[i].buffer);
+          fail = true;
+        }
+        else
+          pfClients[i].buffer[pfClients[i].o++] = char(c);
 
-      if (fail) {
-        Serial.println("FAIL");
-        pfClients[i].handle->stop();
-        break;
+        if (c == '\n') {
+          pfClients[i].buffer[BS - 1] = 0x00;
+          if (processPixelflood(i))
+            drawn_anything = true;
+          else
+            fail = true;
+        }
+
+        if (fail) {
+          Serial.println("FAIL");
+          pfClients[i].handle->stop();
+          break;
+        }
       }
     }
   }
@@ -676,24 +753,23 @@ void loop() {
 	static uint32_t prev         = 0;
 	static int      mode         = 0;
 	uint32_t        now          = millis();
-	int             packetSizeMC = UdpMC.parsePacket();
+  if (enable_multicast) {
+    int packetSizeMC = UdpMC.parsePacket();
 
-  if (packetSizeMC) {
-    uint8_t data2[256];
-    int len = UdpMC.read(data2, 256);
-    lzjbDecompress(data2, data, len, 192);
-    drawn_anything = true;
-    activity       = true;
+    if (packetSizeMC) {
+      uint8_t data2[256];
+      int len = UdpMC.read(data2, 256);
+      lzjbDecompress(data2, data, len, 192);
+      drawn_anything = true;
+      activity       = true;
+    }
   }
-
-  if (drawn_anything)
-    putScreen();
 
   if (activity) {
     mode = 0;
     prev = now;
   }
-  else {
+  else if (enable_screensaver) {
 		if (now - prev >= 2100) {  // slightly more than 2 seconds
 			static uint32_t prev_d2 = 0;
 
@@ -706,4 +782,7 @@ void loop() {
 			animate(mode);
 		}
 	}
+
+  if (drawn_anything)
+    putScreen();
 }
