@@ -511,6 +511,15 @@ inline void setPixel(const int x, const int y, const bool c)
 		data[o] &= ~mask;
 }
 
+inline void setPixels(const int x, const int y, const uint8_t line)
+{
+	int pixel_row = y / 8;
+	int matrix    = x / 8;
+	int matrix_y  = 7 - (y & 7);
+	int o         = pixel_row * WIDTH + matrix * 8 + matrix_y;
+  data[o] = line;
+}
+
 void sendDdpAnnouncement(const bool wait, const IPAddress & ip, const uint16_t port) {
   if (wait) {
     static uint32_t prev_send = 0;
@@ -695,10 +704,9 @@ void printRow(int o, const char what[]) {
   for(int i=0; i<n; i++) {
     int c = what[i];
     for(int y=0; y<8; y++) {
-      uint8_t buffer[8];
-      memcpy_P(buffer, font[c][y], 8);
+      uint8_t line = pgm_read_byte(&font[c][y]);
       for(int x=0; x<8; x++)
-        setPixel(x + i * 7, o + y, buffer[x]);
+        setPixel(x + i * 7, o + y, !!(line & (1 << (7 - x))));
     }
   }
 }
