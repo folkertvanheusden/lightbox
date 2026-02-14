@@ -1,4 +1,4 @@
-// (C) 2019-2026 by Folkert van Heusden <mail@vanheusden.com>
+// (C) 2019-2026 by Folkert van Heusden <folkert@komputilo.nl>
 
 #include "LedControl.h"
 #include <EEPROM.h>
