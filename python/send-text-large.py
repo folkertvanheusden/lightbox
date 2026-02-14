@@ -9,16 +9,16 @@ import sys
 import threading
 import time
 
-#UDP_IP = '192.168.65.236'
-#UDP_IP = '192.168.65.150'
-UDP_IP = '10.42.45.47'
-UDP_PORT = 32001
+MC_IP = '226.1.1.9'
+MC_PORT = 32009
+MC_TTL = 15
 
-text = 'test 12345'
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, MC_TTL)
+
+text = 'Hello, world! Send a text packet to port 5001 to show it here. '
 
 font = ImageFont.truetype("/usr/share/fonts/truetype/freefont/FreeMono.ttf", 24)
-
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 def thrd():
     global text
@@ -38,9 +38,10 @@ def thrd():
         except Exception as e:
             print('exception: ', e)
 
-#th = threading.Thread(target=thrd)
-#th.daemon = True
-#th.start()
+th = threading.Thread(target=thrd)
+th.daemon = True
+th.start()
+
 
 t = time.time()
 
@@ -49,11 +50,8 @@ while True:
         img = Image.new('1', (64, 24))
         drw = ImageDraw.Draw(img)
         drw.text((0, 0), text, fill=(1), font=font)
-
         drw.rectangle([(0, 0), (63, 23)], outline=1)
-
         text = text[1:] + text[0]
-
         data = img.getdata()
 
         MESSAGE = bytearray()
@@ -73,7 +71,7 @@ while True:
                     MESSAGE.append(b)
 
         data_lzjb = compress(MESSAGE)
-        sock.sendto(data_lzjb, (UDP_IP, UDP_PORT))
+        s.sendto(data_lzjb, (MC_IP, MC_PORT))
 
     if t and time.time() - t >= 60:
         t = None
@@ -84,6 +82,6 @@ while True:
             MESSAGE.append(0)
 
         data_lzjb = compress(MESSAGE)
-        sock.sendto(data_lzjb, (UDP_IP, UDP_PORT))
+        s.sendto(data_lzjb, (MC_IP, MC_PORT))
 
     time.sleep(.2)
