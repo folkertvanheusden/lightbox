@@ -16,7 +16,7 @@ See https://komputilo.nl/texts/lightbox/ for more details.
 
 
 * arduino/ contains the "firmware" for the ESP8266
-* python/ contains some example Python scripts to interact with it altough Pixelflood will work just fine
+* python/ contains some example Python scripts to interact with it altough Pixelflood and DDP will work just fine
 
 
-=== by Folkert van Heusden
+Written by Folkert van Heusden
