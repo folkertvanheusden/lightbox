@@ -1,5 +1,9 @@
 #! /usr/bin/python3
 
+# (C) 2019-2026 by Folkert van Heusden <folkert@komputilo.nl>
+
+# This script requires the "python3-pil" and "lzjb" packages.
+
 from lzjb import compress
 from PIL import Image
 from PIL import ImageDraw

@@ -1,5 +1,9 @@
 #! /usr/bin/python3
 
+# (C) 2019-2026 by Folkert van Heusden <folkert@komputilo.nl>
+
+# This script requires the "lzjb" package.
+
 from lzjb import compress
 import random
 import socket

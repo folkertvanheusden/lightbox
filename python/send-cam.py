@@ -1,8 +1,8 @@
 #! /usr/bin/python3
 
-# (C) 2019-2024 by Folkert van Heusden <mail@vanheusden.com>
+# (C) 2019-2026 by Folkert van Heusden <folkert@komputilo.nl>
 
-# This script requires the "opencv-python" package.
+# This script requires the "opencv-python" and "lzjb" packages.
 
 from lzjb import compress
 import socket
