@@ -252,14 +252,12 @@ void enableOTA() {
 
 	ArduinoOTA.onStart([]() {
         Serial.println(F("OTA start"));
-        cls();
 			});
 	ArduinoOTA.onEnd([]() {
         Serial.println(F("OTA end"));
 			});
 	ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
         Serial.printf("OTA progress: %u%%\r", progress * 100 / total);
-        setPixel(progress * WIDTH / total, 1, true);
 			});
 	ArduinoOTA.onError([](ota_error_t error) {
         Serial.printf("Error[%u]: ", error);
