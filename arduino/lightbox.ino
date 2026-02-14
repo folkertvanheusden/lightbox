@@ -251,21 +251,28 @@ void enableOTA() {
 	ArduinoOTA.setPassword("g3h31m");
 
 	ArduinoOTA.onStart([]() {
-			Serial.println(F("OTA start"));
+        Serial.println(F("OTA start"));
+        cls();
 			});
 	ArduinoOTA.onEnd([]() {
-			Serial.println(F("OTA end"));
+        Serial.println(F("OTA end"));
 			});
 	ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-			Serial.printf("OTA progress: %u%%\r", (progress / (total / 100)));
+        Serial.printf("OTA progress: %u%%\r", progress * 100 / total);
+        setPixel(progress * WIDTH / total, 1, true);
 			});
 	ArduinoOTA.onError([](ota_error_t error) {
-			Serial.printf("Error[%u]: ", error);
-			if (error == OTA_AUTH_ERROR) Serial.println(F("Auth Failed"));
-			else if (error == OTA_BEGIN_ERROR) Serial.println(F("Begin Failed"));
-			else if (error == OTA_CONNECT_ERROR) Serial.println(F("Connect Failed"));
-			else if (error == OTA_RECEIVE_ERROR) Serial.println(F("Receive Failed"));
-			else if (error == OTA_END_ERROR) Serial.println(F("End Failed"));
+        Serial.printf("Error[%u]: ", error);
+        if (error == OTA_AUTH_ERROR)
+          Serial.println(F("Auth Failed"));
+        else if (error == OTA_BEGIN_ERROR)
+          Serial.println(F("Begin Failed"));
+        else if (error == OTA_CONNECT_ERROR)
+          Serial.println(F("Connect Failed"));
+        else if (error == OTA_RECEIVE_ERROR)
+          Serial.println(F("Receive Failed"));
+        else if (error == OTA_END_ERROR)
+          Serial.println(F("End Failed"));
 			});
 	ArduinoOTA.begin();
 	Serial.println(F("Ready"));
