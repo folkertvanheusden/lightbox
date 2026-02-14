@@ -44,6 +44,7 @@ uint8_t    broadcast[4] { };
 char       mqtt_server      [64] { "vps001.komputilo.nl"   };
 char       mqtt_text_topic  [64] { "nurdspace/hek42ticker" };
 char       mqtt_bitmap_topic[64] { "nurdspace/hek42tocker" };
+uint16_t   mqtt_port             { 1883                    };
 
 #define BS  48
 struct pf {
@@ -108,6 +109,7 @@ void readSettings() {
     getEEPROM(  6, mqtt_server      , sizeof mqtt_server      );
     getEEPROM( 70, mqtt_text_topic  , sizeof mqtt_text_topic  );
     getEEPROM(134, mqtt_bitmap_topic, sizeof mqtt_bitmap_topic);
+    mqtt_port          = (EEPROM.read(198) << 8) | EEPROM.read(199);
   }
 }
 
@@ -126,6 +128,8 @@ void writeSettings() {
   putEEPROM(  6, mqtt_server,       sizeof mqtt_server      );
   putEEPROM( 70, mqtt_text_topic,   sizeof mqtt_text_topic  );
   putEEPROM(134, mqtt_bitmap_topic, sizeof mqtt_bitmap_topic);
+  EEPROM.write(198, mqtt_port >> 8);
+  EEPROM.write(199, mqtt_port     );
 
   uint8_t lrc = LRC_INIT;
   for(uint16_t i=0; i<EEPROM_SIZE - 1; i++)
@@ -343,16 +347,16 @@ void handleRoot() {
       "<p><dl><dt>Built on</dt><dd><time>" __DATE__ " " __TIME__ "</time></dt></dl><dt>GIT revision:</dt><dd>" __GIT_REVISION__ "</dd></dl></p></section>"
       "<section><header><h2>screenshot</h2></header><p><img src=\"/screendump.bmp\" alt=\"screen shot\"></p></section>"
       "<section><header><h2>toggles</h2></header><p><table><tr><th>what</th><th>state</th><tr><td><a href=\"/toggle-pixelflood\">pixelflood</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-mqtt-text\">MQTT text</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-mqtt-bitmap\">MQTT bitmap</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-multicast\">multicast</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-screensaver\">screensaver</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-ddp\">ddp</a></td><td>%s</td></tr></table></section>"
-      "<section><header><h2>MQTT settings</h2></header><p><form action=\"/set-mqtt\" enctype=\"application/x-www-form-urlencoded\" method=\"POST\"><table><tr><th>what</th><th>setting</th></tr><tr><td>server</td><td><input type=\"text\" id=\"mqtt-server\" name=\"mqtt-server\" value=\"%s\"></td></tr><tr><td>text topic</td><td><input type=\"text\" id=\"mqtt-text-topic\" name=\"mqtt-text-topic\" value=\"%s\"></td></tr><tr><td>bitmap topic</td><td><input type=\"text\" id=\"mqtt-bitmap-topic\" name=\"mqtt-bitmap-topic\" value=\"%s\"></td></tr><tr><td></td><td><input type=\"submit\"></td></tr></table></form></p></section>"
+      "<section><header><h2>MQTT settings</h2></header><p><form action=\"/set-mqtt\" enctype=\"application/x-www-form-urlencoded\" method=\"POST\"><table><tr><th>what</th><th>setting</th></tr><tr><td>server</td><td><input type=\"text\" id=\"mqtt-server\" name=\"mqtt-server\" value=\"%s\"></td></tr><tr><td>port</td><td><input type=\"text\" id=\"mqtt-port\" name=\"mqtt-port\" value=\"%d\"></td></tr><tr><td>text topic</td><td><input type=\"text\" id=\"mqtt-text-topic\" name=\"mqtt-text-topic\" value=\"%s\"></td></tr><tr><td>bitmap topic</td><td><input type=\"text\" id=\"mqtt-bitmap-topic\" name=\"mqtt-bitmap-topic\" value=\"%s\"></td></tr><tr><td></td><td><input type=\"submit\"></td></tr></table></form></p></section>"
       "<footer><header><h2>what?</h2></header><p>Designed by <a href=\"mailto:folkert@komputilo.nl\">Folkert van Heusden</a>, see <a href=\"https://komputilo.nl/texts/lightbox/\">https://komputilo.nl/texts/lightbox/</a> for more details.</p></footer></article></body></html>",
       tstr(enable_pixelflood), tstr(enable_mqtt_text), tstr(enable_mqtt_bitmap), tstr(enable_multicast), tstr(enable_screensaver), tstr(enable_ddp),
-      mqtt_server, mqtt_text_topic, mqtt_bitmap_topic);
+      mqtt_server, mqtt_port, mqtt_text_topic, mqtt_bitmap_topic);
 	webServer->send(200, "text/html", p);
 }
 
 void restartMqtt() {
   mqttclient.disconnect();
-	mqttclient.setServer(mqtt_server, 1883);
+	mqttclient.setServer(mqtt_server, mqtt_port);
 }
 
 void handleSetMqtt() {
@@ -374,6 +378,12 @@ void handleSetMqtt() {
   temp = webServer->arg("mqtt-bitmap-topic");
   if (temp.length() < sizeof(mqtt_bitmap_topic))
     strcpy(mqtt_bitmap_topic, temp.c_str());
+  else
+    fail = true;
+
+  int new_mqtt_port = atoi(webServer->arg("mqtt-port").c_str());
+  if (new_mqtt_port != 0 && new_mqtt_port != 65535)
+    mqtt_port = new_mqtt_port;
   else
     fail = true;
 
