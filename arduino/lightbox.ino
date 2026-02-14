@@ -160,7 +160,7 @@ void MQTT_connect() {
 				break;
 			}
 
-			delay(1000);
+			myDelay(1000);
     }
 		while (!mqttclient.connected());
 
@@ -197,7 +197,7 @@ void text(const char line[]) {
     memmove(&data[0], &data[8], 192 - 8);
     memset(&data[192 - 8], 0x00, 8);
     putScreen();
-    delay(50);
+    myDelay(50);
   }
   cls();
 
@@ -565,6 +565,15 @@ void handleDdpData(const uint8_t *const buffer, const size_t n) {
 	}
 }
 
+void myDelay(int ms) {
+  uint32_t until = millis() + ms;
+  do {
+    webServer->handleClient();
+    ArduinoOTA.handle();
+  }
+  while(millis() < until);
+}
+
 void setup() {
 	Serial.begin(115200);
 	Serial.setDebugOutput(true);
@@ -654,7 +663,7 @@ void setup() {
   snprintf(p, sizeof work_buffer, ".%d.%d", ip[2], ip[3]);
   text(p);
   putScreen();
-  delay(2000);
+  myDelay(2000);
 
 	Serial.println(F("Go!"));
 }
