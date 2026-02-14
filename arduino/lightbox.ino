@@ -32,6 +32,7 @@
 #define TEXT_PORT          5001
 #define EEPROM_SIZE        4096
 #define LRC_INIT           0x91
+#define BOX_WIDTH          28    // physical dimension, in cm
 
 WiFiUDP    UdpMC;  // multicast LZJB compressed bitmap (64x24)
 WiFiServer tcpPixelfloodServer(PIXELFLOOD_PORT);
@@ -271,7 +272,8 @@ const char *tstr(bool state) {
 }
 
 void handleScreendump() {
-  memset(work_buffer, 0x00, 54);
+#define BMP_HEADER_SIZE 54
+  memset(work_buffer, 0x00, BMP_HEADER_SIZE);
 
 #pragma pack(push, 1) // Ensure no padding
   struct BMPFileHeader {
@@ -283,8 +285,8 @@ void handleScreendump() {
   };
 
   BMPFileHeader *header1 = reinterpret_cast<BMPFileHeader *>(&work_buffer[0]);
-  header1->bfType = 0x4d42;
-  header1->bfOffBits = 54;
+  header1->bfType    = 0x4d42;  // 'MB'
+  header1->bfOffBits = BMP_HEADER_SIZE;
 
   struct BMPInfoHeader {
     uint32_t biSize;
@@ -300,17 +302,19 @@ void handleScreendump() {
     uint32_t biClrImportant;
   };
   BMPInfoHeader *header2 = reinterpret_cast<BMPInfoHeader *>(&work_buffer[14]);
-  header2->biSize = 40;
-  header2->biWidth = WIDTH;
-  header2->biHeight = HEIGHT;
-  header2->biSizeImage = WIDTH * HEIGHT * 3;
-  header2->biPlanes = 1;
-  header2->biBitCount = HEIGHT;
+  header2->biSize          = 40;
+  header2->biWidth         = WIDTH;
+  header2->biHeight        = HEIGHT;
+  header2->biSizeImage     = WIDTH * HEIGHT * 3;
+  header2->biPlanes        = 1;
+  header2->biBitCount      = HEIGHT;
+  header2->biXPelsPerMeter = 100 * WIDTH / BOX_WIDTH;
+  header2->biYPelsPerMeter = header2->biXPelsPerMeter;  // square pixels
 
-  header1->bfSize = 54 + header2->biSizeImage;
+  header1->bfSize = BMP_HEADER_SIZE + header2->biSizeImage;
 #pragma pack(pop)
 
-  uint8_t *rgb = &work_buffer[54];
+  uint8_t *rgb = &work_buffer[BMP_HEADER_SIZE];
   for(byte y=0; y<HEIGHT; y++) {
     for(byte x=0; x<WIDTH; x++) {
       int offset = (HEIGHT - 1 - y) * WIDTH * 3 + x * 3;
