@@ -23,9 +23,18 @@
 #include "font.h"
 #include "simple-css.h"
 
+#define SCREENSAVER_START  2100
+#define SCREENSAVER_ROTATE 15000
+#define WIDTH              64
+#define HEIGHT             24
+#define DDP_PORT           4048
+#define PIXELFLOOD_PORT    1337
+#define TEXT_PORT          5001
+#define EEPROM_SIZE        4096
+#define LRC_INIT           0x91
 
 WiFiUDP    UdpMC;  // multicast LZJB compressed bitmap (64x24)
-WiFiServer tcpPixelfloodServer(1337);
+WiFiServer tcpPixelfloodServer(PIXELFLOOD_PORT);
 WiFiUDP    UdpDdp;
 WiFiUDP    UdpText;
 WiFiUDP    UdpAnnouncePixelflood;
@@ -56,13 +65,8 @@ ESP8266HTTPUpdateServer httpUpdater;
 
 ESP8266WebServer *webServer = nullptr;
 
-/*
-   int dataPin, int clkPin, int csPin
-   pin 12 is connected to the DataIn
-   pin 11 is connected to the CLK
-   pin 10 is connected to LOAD
- */
 #define NP 8
+/* int dataPin, int clkPin, int csPin, int NP */
 LedControl lc1 = LedControl(D1, D2, D3, NP);
 LedControl lc2 = LedControl(D1, D2, D4, NP);
 LedControl lc3 = LedControl(D1, D2, D5, NP);
@@ -74,7 +78,7 @@ bool enable_multicast   = true;
 bool enable_screensaver = true;
 bool enable_ddp         = true;
 
-uint8_t work_buffer[4608];
+uint8_t work_buffer[4608];  // enough to fit a BMP in
 char   *const p = reinterpret_cast<char *>(work_buffer);
 uint8_t data[192];
 
@@ -90,19 +94,19 @@ void getEEPROM(int offset, char *const to, int n) {
 }
 
 void readSettings() {
-  uint8_t lrc = 0x91;
-  for(uint16_t i=0; i<4095; i++)
+  uint8_t lrc = LRC_INIT;
+  for(uint16_t i=0; i<EEPROM_SIZE - 1; i++)
     lrc ^= EEPROM.read(i);
-  if (lrc == EEPROM.read(4095)) {
+  if (lrc == EEPROM.read(EEPROM_SIZE - 1)) {
     enable_pixelflood  = EEPROM.read(0);
     enable_mqtt_text   = EEPROM.read(1);
     enable_mqtt_bitmap = EEPROM.read(2);
     enable_multicast   = EEPROM.read(3);
     enable_screensaver = EEPROM.read(4);
     enable_ddp         = EEPROM.read(5);
-    getEEPROM(  6, mqtt_server      , 64);
-    getEEPROM( 70, mqtt_text_topic  , 64);
-    getEEPROM(134, mqtt_bitmap_topic, 64);
+    getEEPROM(  6, mqtt_server      , sizeof mqtt_server      );
+    getEEPROM( 70, mqtt_text_topic  , sizeof mqtt_text_topic  );
+    getEEPROM(134, mqtt_bitmap_topic, sizeof mqtt_bitmap_topic);
   }
 }
 
@@ -118,14 +122,14 @@ void writeSettings() {
   EEPROM.write(3, enable_multicast  );
   EEPROM.write(4, enable_screensaver);
   EEPROM.write(5, enable_ddp        );
-  putEEPROM(  6, mqtt_server,       64);
-  putEEPROM( 70, mqtt_text_topic,   64);
-  putEEPROM(134, mqtt_bitmap_topic, 64);
+  putEEPROM(  6, mqtt_server,       sizeof mqtt_server      );
+  putEEPROM( 70, mqtt_text_topic,   sizeof mqtt_text_topic  );
+  putEEPROM(134, mqtt_bitmap_topic, sizeof mqtt_bitmap_topic);
 
-  uint8_t lrc = 0x91;
-  for(uint16_t i=0; i<4095; i++)
+  uint8_t lrc = LRC_INIT;
+  for(uint16_t i=0; i<EEPROM_SIZE - 1; i++)
     lrc ^= EEPROM.read(i);
-  EEPROM.write(4095, lrc);
+  EEPROM.write(EEPROM_SIZE - 1, lrc);
 
   EEPROM.commit();
 }
@@ -143,7 +147,7 @@ void MQTT_connect() {
 
 	if (!mqttclient.connected()) {
     do {
-			Serial.print("Attempting MQTT connection to ");
+			Serial.print(F("Attempting MQTT connection to "));
       Serial.println(mqtt_server);
 
 			if (mqttclient.connect(name)) {
@@ -158,13 +162,13 @@ void MQTT_connect() {
 		Serial.println(F("MQTT Connected!"));
 
 		if (mqttclient.subscribe(mqtt_text_topic) == false)
-			Serial.println("subscribe failed");
+			Serial.println(F("subscribe failed"));
 		else
-			Serial.println("subscribed");
+			Serial.println(F("subscribed"));
 		if (mqttclient.subscribe(mqtt_bitmap_topic) == false)
-			Serial.println("subscribe failed");
+			Serial.println(F("subscribe failed"));
 		else
-			Serial.println("subscribed");
+			Serial.println(F("subscribed"));
 
 		mqttclient.loop();
 	}
@@ -224,15 +228,13 @@ void startSSDP(ESP8266WebServer *const ws) {
 	SSDP.setSchemaURL("description.xml");
 	SSDP.setHTTPPort(80);
 
-	SSDP.setName(name);
-
-	SSDP.setSerialNumber("0.2");
-
+	SSDP.setName("LightBox");
+	SSDP.setSerialNumber(&name[4]);  // get ESP8266 serial number from nae
 	SSDP.setURL("index.html");
-	SSDP.setModelName("L-B");
-	SSDP.setModelNumber("0.2");
+	SSDP.setModelName("LightBox");
+	SSDP.setModelNumber("1.0");
 	SSDP.setModelURL("http://www.komputilo.nl/Arduino/lightbox");
-	SSDP.setManufacturer("vanHeusden.com");
+	SSDP.setManufacturer("van Heusden");
 	SSDP.setManufacturerURL("http://www.komputilo.nl/");
 
 	SSDP.begin();
@@ -299,19 +301,19 @@ void handleScreendump() {
   };
   BMPInfoHeader *header2 = reinterpret_cast<BMPInfoHeader *>(&work_buffer[14]);
   header2->biSize = 40;
-  header2->biWidth = 64;
-  header2->biHeight = 24;
-  header2->biSizeImage = 64 * 24 * 3;
+  header2->biWidth = WIDTH;
+  header2->biHeight = HEIGHT;
+  header2->biSizeImage = WIDTH * HEIGHT * 3;
   header2->biPlanes = 1;
-  header2->biBitCount = 24;
+  header2->biBitCount = HEIGHT;
 
   header1->bfSize = 54 + header2->biSizeImage;
 #pragma pack(pop)
 
   uint8_t *rgb = &work_buffer[54];
-  for(byte y=0; y<24; y++) {
-    for(byte x=0; x<64; x++) {
-      int offset = (23 - y) * 64 * 3 + x * 3;
+  for(byte y=0; y<HEIGHT; y++) {
+    for(byte x=0; x<WIDTH; x++) {
+      int offset = (HEIGHT - 1 - y) * WIDTH * 3 + x * 3;
       rgb[offset + 2] = 255;
       if (getPixel(x, y)) {
         rgb[offset + 1] = 0;
@@ -486,7 +488,7 @@ inline void setPixel(const int x, const int y, const bool c)
 	int matrix    = x / 8;
 	int matrix_y  = 7 - (y & 7);
 	int matrix_x  = x & 7;
-	int o         = pixel_row * 64 + matrix * 8 + matrix_y;
+	int o         = pixel_row * WIDTH + matrix * 8 + matrix_y;
 	int mask      = 1 << matrix_x;
 
 	if (c)
@@ -519,7 +521,7 @@ void handleDdpData(const uint8_t *const buffer, const size_t n) {
 	if (n < 10)
 		return;
 	if ((buffer[0] >> 6) != 1) {  // unexpected version
-		Serial.println("DDP packet unknown version");
+		Serial.println(F("DDP packet unknown version"));
 		return;
 	}
 
@@ -541,9 +543,9 @@ void handleDdpData(const uint8_t *const buffer, const size_t n) {
   int pixel_mul          = data_type == 1 ?  3 :  1;
 	for(size_t i=packet_start_index; i<std::min(size_t(packet_start_index + length), n); i += pixel_mul) {
 		unsigned offset_offseted = offset + i - packet_start_index;
-		int y = offset_offseted / (64 * pixel_mul);
-		if (y < 24) {
-			int x = (offset_offseted / pixel_mul) % 64;
+		int y = offset_offseted / (WIDTH * pixel_mul);
+		if (y < HEIGHT) {
+			int x = (offset_offseted / pixel_mul) % WIDTH;
       setPixel(x, y, buffer[i + 0] >= 128);
 		}
 	}
@@ -571,7 +573,7 @@ void setup() {
 	data[0] = 1;
   putScreen();
 
-  EEPROM.begin(4096);
+  EEPROM.begin(EEPROM_SIZE);
   readSettings();
 
 	enableOTA();
@@ -613,11 +615,11 @@ void setup() {
 
 	UdpMC.beginMulticast(WiFi.localIP(), IPAddress(226, 1, 1, 9), 32009);
   tcpPixelfloodServer.begin();
-  UdpAnnouncePixelflood.begin(1337);
+  UdpAnnouncePixelflood.begin(PIXELFLOOD_PORT);
 
-  UdpDdp.begin(4048);
+  UdpDdp.begin(DDP_PORT);
 
-  UdpText.begin(5001);
+  UdpText.begin(TEXT_PORT);
 
   auto ip = WiFi.localIP();
   auto netmask = WiFi.subnetMask();
@@ -652,14 +654,14 @@ void cls() {
 }
 
 bool getPixel(const int x, const int y) {
-	if (x >= 64 || x < 0 || y >= 24 || y < 0)
+	if (x >= WIDTH || x < 0 || y >= HEIGHT || y < 0)
 		return false;
 
 	int pixel_row = y / 8;
 	int matrix    = x / 8;
 	int matrix_y  = 7 - (y & 7);
 	int matrix_x  = x & 7;
-	int o         = pixel_row * 64 + matrix * 8 + matrix_y;
+	int o         = pixel_row * WIDTH + matrix * 8 + matrix_y;
 	int mask      = 1 << matrix_x;
 
 	return !!(data[o] & mask);
@@ -743,7 +745,7 @@ void getQuadrant(int bx, int by, int dx, int dy, int cx, int cy, int r, std::vec
 		x = rc.first;
 		y = rc.second;
 
-    if (x >= 64 || x < 0 || y >= 24 || y < 0)
+    if (x >= WIDTH || x < 0 || y >= HEIGHT || y < 0)
       continue;
 
 		out->push_back(rc);
@@ -763,13 +765,13 @@ void animate(int mode) {
 		static int d = 1;
 
 		cls();
-		for(int x=0; x<64; x++)
+		for(int x=0; x<WIDTH; x++)
 			setPixel(x, y, true);
 
 		y += d;
 		if (y == 25) {
 			d = -1;
-			y = 24;
+			y = HEIGHT;
 		}
 		else if (y == -1) {
 			d = 1;
@@ -784,11 +786,11 @@ void animate(int mode) {
 		setPixel(x, y, true);
 
 		x++;
-		if (x == 64) {
+		if (x == WIDTH) {
 			x = 0;
 			y++;
 
-			if (y == 24)
+			if (y == HEIGHT)
 				y = 0;
 		}
 	}
@@ -797,7 +799,7 @@ void animate(int mode) {
 		static int pixels_nr = 0;
 
 		pixels[pixels_nr].clear();
-		circle(1 + (rand() % 64), rand() & 63, rand() % 24, &pixels[pixels_nr++]);
+		circle(1 + (rand() % WIDTH), rand() & (WIDTH - 1), rand() % HEIGHT, &pixels[pixels_nr++]);
 		pixels_nr &= 3;
 
 		for(int i=0; i<4; i++) {
@@ -819,7 +821,9 @@ bool processPixelflood(size_t nr) {
     *lf = 0x00;
 
     if (strcmp(buf, "SIZE") == 0) {
-      pfClients.at(nr).handle.print("SIZE 64 24\n");
+      char buffer[16];
+      snprintf(buffer, sizeof buffer, "SIZE %d %d\n", WIDTH, HEIGHT);
+      pfClients.at(nr).handle.print(buffer);
     }
     else if (lf - buf < 13) {
       return false;
@@ -838,11 +842,11 @@ bool processPixelflood(size_t nr) {
         return false;
 
       int x = atoi(sp[0]);
-      if (x < 0 || x >= 64)
+      if (x < 0 || x >= WIDTH)
         return false;
 
       int y = atoi(sp[1]);
-      if (y < 0 || y >= 24)
+      if (y < 0 || y >= HEIGHT)
         return false;
 
       if (lf - sp[2] < 6)
@@ -887,8 +891,8 @@ void sendPixelfloodAnnouncement() {
     return;
   prev_send = now;
   auto ip = WiFi.localIP();
-  snprintf(p, sizeof work_buffer, "pixelvloed:1.00 %d.%d.%d.%d:1337 64*24", ip[0], ip[1], ip[2], ip[3]);
-  UdpAnnouncePixelflood.beginPacket(broadcast, 1337);
+  snprintf(p, sizeof work_buffer, "pixelvloed:1.00 %d.%d.%d.%d:%d %d*%d", ip[0], ip[1], ip[2], ip[3], PIXELFLOOD_PORT, WIDTH, HEIGHT);
+  UdpAnnouncePixelflood.beginPacket(broadcast, PIXELFLOOD_PORT);
   UdpAnnouncePixelflood.write(p);
   UdpAnnouncePixelflood.endPacket();
 }
@@ -919,7 +923,7 @@ void loop() {
       // max 32 clients
       while(pfClients.size() > 32) {
         pfClients.erase(pfClients.begin());
-        Serial.println("CLOSE SESSION");
+        Serial.println(F("CLOSE SESSION"));
       }
 
       pfClients.push_back({ WiFiClient(newPixelfloodClient), 0 });
@@ -957,7 +961,7 @@ void loop() {
         }
 
         if (fail) {
-          Serial.println("FAIL");
+          Serial.println(F("FAIL"));
           pfClients[i].handle.stop();
           break;
         }
@@ -979,7 +983,7 @@ void loop() {
   }
 
   if (enable_ddp) {
-    sendDdpAnnouncement(false, broadcast, 4048);
+    sendDdpAnnouncement(false, broadcast, DDP_PORT);
 
     int packetSizeDdp = UdpDdp.parsePacket();
     if (packetSizeDdp) {
@@ -1018,10 +1022,10 @@ void loop() {
     prev = now;
   }
   else if (enable_screensaver) {
-		if (now - prev >= 2100) {  // slightly more than 2 seconds
+		if (now - prev >= SCREENSAVER_START) {  // slightly more than 2 seconds
 			static uint32_t prev_d2 = 0;
 
-			if (mode == 0 || now - prev_d2 >= 15000) {
+			if (mode == 0 || now - prev_d2 >= SCREENSAVER_ROTATE) {
 				memset(data, 0x00, sizeof data);
 				mode = (rand() % 3) + 1;
 				prev_d2 = now;
