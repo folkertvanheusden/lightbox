@@ -275,7 +275,6 @@ void enableOTA() {
         text("",        true);
         text("OTA upd", true);
         text("start",   true);
-        putScreen();
 			});
 	ArduinoOTA.onEnd([]() {
         cls();
@@ -709,11 +708,6 @@ void setup() {
 
 void cls() {
   memset(data, 0x00, sizeof data);
-	for(int z = 0; z < NP; z++) {
-		lc1.clearDisplay(z);
-		lc2.clearDisplay(z);
-		lc3.clearDisplay(z);
-	}
 }
 
 bool getPixel(const int x, const int y) {
