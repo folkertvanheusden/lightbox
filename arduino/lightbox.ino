@@ -185,7 +185,7 @@ char bline1[10] { };
 char bline2[10] { };
 char bline3[10] { };
 
-void text(const char line[]) {
+void text(const char line[], const bool fast = false) {
   int n = strlen(line);
   if (n >= 10)
     n = 9;
@@ -195,11 +195,13 @@ void text(const char line[]) {
   memcpy(bline3, line, n);
   bline3[n] = 0x00;
 
-  for(byte y=0; y<8; y++) {
-    memmove(&data[0], &data[8], 192 - 8);
-    memset(&data[192 - 8], 0x00, 8);
-    putScreen();
-    myDelay(50);
+  if (!fast) {
+    for(byte y=0; y<8; y++) {
+      memmove(&data[0], &data[8], 192 - 8);
+      memset(&data[192 - 8], 0x00, 8);
+      putScreen();
+      myDelay(50);
+    }
   }
   cls();
 
@@ -214,8 +216,10 @@ void setupWifi() {
 	WiFi.hostname(name);
 	WiFi.begin();
 
-	if (!wifiManager.autoConnect(name))
+	if (!wifiManager.autoConnect(name)) {
+    WiFi.printDiag(Serial);
 		reboot();
+  }
 
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
 
@@ -253,28 +257,28 @@ void enableOTA() {
 	ArduinoOTA.setPassword("g3h31m");
 
 	ArduinoOTA.onStart([]() {
-        Serial.println(F("OTA start"));
         cls();
+        text("",        true);
+        text("OTA upd", true);
+        text("start",   true);
+        putScreen();
 			});
 	ArduinoOTA.onEnd([]() {
-        Serial.println(F("OTA end"));
+        cls();
+        text("OTA upd",  true);
+        text("finished", true);
 			});
 	ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
         Serial.printf("OTA progress: %u%%\r", progress * 100 / total);
         setPixel(progress * WIDTH / total, 1, true);
+        putScreen();
 			});
 	ArduinoOTA.onError([](ota_error_t error) {
-        Serial.printf("Error[%u]: ", error);
-        if (error == OTA_AUTH_ERROR)
-          Serial.println(F("Auth Failed"));
-        else if (error == OTA_BEGIN_ERROR)
-          Serial.println(F("Begin Failed"));
-        else if (error == OTA_CONNECT_ERROR)
-          Serial.println(F("Connect Failed"));
-        else if (error == OTA_RECEIVE_ERROR)
-          Serial.println(F("Receive Failed"));
-        else if (error == OTA_END_ERROR)
-          Serial.println(F("End Failed"));
+        cls();
+        text("OTA upd", true);
+        text("error:",  true);
+        snprintf(p, sizeof work_buffer, "%u", error);
+        text(p,         true);
 			});
 	ArduinoOTA.begin();
 	Serial.println(F("Ready"));
@@ -296,7 +300,6 @@ void handleScreendump() {
     uint16_t bfReserved2;
     uint32_t bfOffBits;
   };
-
   BMPFileHeader *header1 = reinterpret_cast<BMPFileHeader *>(&work_buffer[0]);
   header1->bfType    = 0x4d42;  // 'MB'
   header1->bfOffBits = BMP_HEADER_SIZE;
@@ -361,6 +364,11 @@ void handleRoot() {
       tstr(enable_pixelflood), tstr(enable_mqtt_text), tstr(enable_mqtt_bitmap), tstr(enable_multicast), tstr(enable_screensaver), tstr(enable_ddp),
       mqtt_server, mqtt_port, mqtt_text_topic, mqtt_bitmap_topic);
 	webServer->send(200, "text/html", p);
+}
+
+void handleNotFound() {
+  webServer->sendHeader("Location", "/", true);
+  webServer->send(302, "text/plane", "Page does not exist");
 }
 
 void restartMqtt() {
@@ -635,6 +643,8 @@ void setup() {
 
 	webServer->on("/description.xml", HTTP_GET, []() { SSDP.schema(webServer->client()); });
 
+  webServer->onNotFound(handleNotFound);
+
 	httpUpdater.setup(webServer);
 
 	webServer->begin();
@@ -679,6 +689,7 @@ void setup() {
 }
 
 void cls() {
+  memset(data, 0x00, sizeof data);
 	for(int z = 0; z < NP; z++) {
 		lc1.clearDisplay(z);
 		lc2.clearDisplay(z);
