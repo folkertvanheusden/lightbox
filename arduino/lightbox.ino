@@ -484,7 +484,7 @@ void lzjbDecompress(uint8_t *s_start, uint8_t *d_start, size_t s_len, size_t d_l
 	constexpr const byte NBBY = 8;
 	uint8_t *src = s_start;
 	uint8_t *dst = d_start;
-	uint8_t *d_end = (uint8_t *)d_start + d_len;
+	uint8_t *d_end = d_start + d_len;
 	uint8_t *cpy = nullptr, copymap = 0;
 	int copymask = 1 << (NBBY - 1);
 
@@ -498,7 +498,7 @@ void lzjbDecompress(uint8_t *s_start, uint8_t *d_start, size_t s_len, size_t d_l
 			int mlen = (src[0] >> (NBBY - MATCH_BITS)) + MATCH_MIN;
 			int offset = ((src[0] << NBBY) | src[1]) & OFFSET_MASK;
 			src += 2;
-			if ((cpy = dst - offset) < (uint8_t *)d_start)
+			if ((cpy = dst - offset) < d_start)
 				return;
 
 			while (--mlen >= 0 && dst < d_end)
@@ -511,11 +511,11 @@ void lzjbDecompress(uint8_t *s_start, uint8_t *d_start, size_t s_len, size_t d_l
 }
 
 void ledupdate(LedControl & dev, const uint8_t *const buf) {
-	const uint8_t *p = buf;
+	const uint8_t *pb = buf;
 
 	for (uint8_t panel = 0; panel < 8; panel++) {
 		for (uint8_t y = 0; y < 8; y++)
-			dev.setRow(panel, y, *p++);
+			dev.setRow(panel, y, *pb++);
 	}
 }
 
@@ -532,15 +532,6 @@ inline void setPixel(const int x, const int y, const bool c)
 		data[o] |= mask;
 	else
 		data[o] &= ~mask;
-}
-
-inline void setPixels(const int x, const int y, const uint8_t line)
-{
-	int pixel_row = y / 8;
-	int matrix    = x / 8;
-	int matrix_y  = 7 - (y & 7);
-	int o         = pixel_row * WIDTH + matrix * 8 + matrix_y;
-  data[o] = line;
 }
 
 void sendDdpAnnouncement(const bool is_announncement, const IPAddress & ip, const uint16_t port) {
@@ -860,8 +851,8 @@ void animate(int mode) {
 		pixels_nr &= 3;
 
 		for(int i=0; i<4; i++) {
-			for(auto & p: pixels[i])
-				setPixel(p.first, p.second, !getPixel(p.first, p.second));
+			for(const auto & pixel : pixels[i])
+				setPixel(pixel.first, pixel.second, !getPixel(pixel.first, pixel.second));
 		}
 	}
 	else {
@@ -889,11 +880,11 @@ bool processPixelflood(size_t nr) {
     {
       char *sp[3] { nullptr, nullptr, nullptr };
       int n_sp = 0;
-      char *p = buf;
-      while(p < lf && n_sp < 3) {
-        if (*p == ' ')
-          sp[n_sp++]= p;
-        p++;
+      char *pb = buf;
+      while(pb < lf && n_sp < 3) {
+        if (*pb == ' ')
+          sp[n_sp++]= pb;
+        pb++;
       }
       if (n_sp != 3)
         return false;
