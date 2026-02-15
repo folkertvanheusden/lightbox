@@ -163,6 +163,15 @@ bool MQTT_subscribe(const char topic[]) {
     return true;
 }
 
+inline IRAM_ATTR void setPixel(const int x, const int y, const bool c)
+{
+  uint16_t base = (y >> 3) * WIDTH;
+  uint16_t o    = base + ((x >> 3) << 3) + 7 - (y & 7);
+  uint8_t  bit  = c << (x & 7);
+  uint8_t *p    = &data[o];
+  *p = (*p & ~bit) | bit;
+}
+
 char bline1[10] { };
 char bline2[10] { };
 char bline3[10] { };
@@ -517,21 +526,6 @@ void ledupdate(LedControl & dev, const uint8_t *const buf) {
 		for (uint8_t y = 0; y < 8; y++)
 			dev.setRow(panel, y, *pb++);
 	}
-}
-
-inline void setPixel(const int x, const int y, const bool c)
-{
-	int pixel_row = y / 8;
-	int matrix    = x / 8;
-	int matrix_y  = 7 - (y & 7);
-	int matrix_x  = x & 7;
-	int o         = pixel_row * WIDTH + matrix * 8 + matrix_y;
-	int mask      = 1 << matrix_x;
-
-	if (c)
-		data[o] |= mask;
-	else
-		data[o] &= ~mask;
 }
 
 void sendDdpAnnouncement(const bool is_announncement, const IPAddress & ip, const uint16_t port) {
