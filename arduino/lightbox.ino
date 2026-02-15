@@ -628,6 +628,7 @@ void setup() {
 
 	snprintf(name, sizeof name, "L-B-%u", ESP.getChipId());
 
+  cls();
 	data[0] = 1;
   putScreen();
 
@@ -1082,7 +1083,7 @@ void loop() {
 			static uint32_t prev_d2 = 0;
 
 			if (mode == 0 || now - prev_d2 >= SCREENSAVER_ROTATE) {
-				memset(data, 0x00, sizeof data);
+				cls();
 				mode = (rand() % 3) + 1;
 				prev_d2 = now;
 			}
