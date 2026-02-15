@@ -516,8 +516,8 @@ inline void setPixels(const int x, const int y, const uint8_t line)
   data[o] = line;
 }
 
-void sendDdpAnnouncement(const bool wait, const IPAddress & ip, const uint16_t port) {
-  if (wait) {
+void sendDdpAnnouncement(const bool is_announncement, const IPAddress & ip, const uint16_t port) {
+  if (is_announncement) {
     static uint32_t prev_send = 0;
     uint32_t        now       = millis();
     if (now - prev_send < DDP_ANNOUNCE_INTERVAL)
@@ -525,7 +525,7 @@ void sendDdpAnnouncement(const bool wait, const IPAddress & ip, const uint16_t p
     prev_send = now;
   }
 
-	work_buffer[0] = 64 | 4 | 1;  // version_1, reply, push
+	work_buffer[0] = 64 | (is_announncement ? 0 : 4) | 1;  // version_1, reply, push
 	work_buffer[3] = 251;  // json status
   int msg_len = snprintf(&p[10], sizeof work_buffer - 10, "{\"status\" { \"man\": \"www.komputilo.nl\", \"mod\": \"Lightbox DDP server\", \"ver\": \"0.1\" } }");
 	work_buffer[8] = msg_len >> 8;
