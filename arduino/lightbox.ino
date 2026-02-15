@@ -81,6 +81,7 @@ bool enable_mqtt_bitmap = true;
 bool enable_multicast   = true;
 bool enable_screensaver = true;
 bool enable_ddp         = true;
+bool enable_text_anim   = true;
 
 uint8_t work_buffer[4608];  // enough to fit a BMP in
 char   *const p = reinterpret_cast<char *>(work_buffer);
@@ -112,6 +113,7 @@ void readSettings() {
     getEEPROM( 70, mqtt_text_topic  , sizeof mqtt_text_topic  );
     getEEPROM(134, mqtt_bitmap_topic, sizeof mqtt_bitmap_topic);
     mqtt_port          = (EEPROM.read(198) << 8) | EEPROM.read(199);
+    enable_text_anim   = EEPROM.read(200);
   }
 }
 
@@ -132,6 +134,7 @@ void writeSettings() {
   putEEPROM(134, mqtt_bitmap_topic, sizeof mqtt_bitmap_topic);
   EEPROM.write(198, mqtt_port >> 8);
   EEPROM.write(199, mqtt_port     );
+  EEPROM.write(200, enable_text_anim);
 
   uint8_t lrc = LRC_INIT;
   for(uint16_t i=0; i<EEPROM_SIZE - 1; i++)
@@ -149,36 +152,15 @@ void reboot() {
 	delay(1000);
 }
 
-void MQTT_connect() {
-	mqttclient.loop();
-
-	if (!mqttclient.connected()) {
-    do {
-			Serial.print(F("Attempting MQTT connection to "));
-      Serial.println(mqtt_server);
-
-			if (mqttclient.connect(name)) {
-				Serial.println(F("Connected"));
-				break;
-			}
-
-			myDelay(1000);
+bool MQTT_subscribe(const char topic[]) {
+		if (mqttclient.subscribe(topic) == false) {
+			Serial.println(F("subscribe failed"));
+      mqttclient.disconnect();
+      return false;
     }
-		while (!mqttclient.connected());
 
-		Serial.println(F("MQTT Connected!"));
-
-		if (mqttclient.subscribe(mqtt_text_topic) == false)
-			Serial.println(F("subscribe failed"));
-		else
-			Serial.println(F("subscribed"));
-		if (mqttclient.subscribe(mqtt_bitmap_topic) == false)
-			Serial.println(F("subscribe failed"));
-		else
-			Serial.println(F("subscribed"));
-
-		mqttclient.loop();
-	}
+		Serial.println(F("subscribed"));
+    return true;
 }
 
 char bline1[10] { };
@@ -195,7 +177,7 @@ void text(const char line[], const bool fast = false) {
   memcpy(bline3, line, n);
   bline3[n] = 0x00;
 
-  if (!fast) {
+  if (fast == false && enable_text_anim == true) {
     for(byte y=0; y<8; y++) {
       memmove(&data[0], &data[8], 192 - 8);
       memset(&data[192 - 8], 0x00, 8);
@@ -205,11 +187,43 @@ void text(const char line[], const bool fast = false) {
   }
   cls();
 
-  printRow(0, bline1);
-  printRow(8, bline2);
+  printRow( 0, bline1);
+  printRow( 8, bline2);
   printRow(16, bline3);
 
   putScreen();
+}
+
+void MQTT_connect() {
+	mqttclient.loop();
+
+	if (!mqttclient.connected()) {
+    do {
+			Serial.print(F("Attempting MQTT connection to "));
+      Serial.println(mqtt_server);
+
+      cls();
+			if (mqttclient.connect(name)) {
+        text("MQTT OK", true);
+				Serial.println(F("Connected"));
+				break;
+			}
+
+      text("MQTT FAIL", true);
+
+			myDelay(1000);
+    }
+		while (!mqttclient.connected());
+
+		Serial.println(F("MQTT Connected!"));
+
+    if (MQTT_subscribe(mqtt_text_topic) == false || MQTT_subscribe(mqtt_bitmap_topic) == false) {
+      cls();
+      text("MQTT ERR", true);
+    }
+
+		mqttclient.loop();
+	}
 }
 
 void setupWifi() {
@@ -358,10 +372,10 @@ void handleRoot() {
       "<body><header><h1>LightBox</h1></header><article><section><header><h2>revision</h2></header>"
       "<p><dl><dt>Built on</dt><dd><time>" __DATE__ " " __TIME__ "</time></dt></dl><dt>GIT revision:</dt><dd>" __GIT_REVISION__ "</dd></dl></p></section>"
       "<section><header><h2>screenshot</h2></header><p><img src=\"/screendump.bmp\" alt=\"screen shot\"></p></section>"
-      "<section><header><h2>toggles</h2></header><p><table><tr><th>what</th><th>state</th><tr><td><a href=\"/toggle-pixelflood\">pixelflood</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-mqtt-text\">MQTT text</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-mqtt-bitmap\">MQTT bitmap</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-multicast\">multicast</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-screensaver\">screensaver</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-ddp\">ddp</a></td><td>%s</td></tr></table></section>"
+      "<section><header><h2>toggles</h2></header><p><table><tr><th>what</th><th>state</th><tr><td><a href=\"/toggle-pixelflood\">pixelflood</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-mqtt-text\">MQTT text</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-mqtt-bitmap\">MQTT bitmap</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-multicast\">multicast</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-screensaver\">screensaver</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-ddp\">ddp</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-text-anim\">text animation</a></td><td>%s</td></tr></table></section>"
       "<section><header><h2>MQTT settings</h2></header><p><form action=\"/set-mqtt\" enctype=\"application/x-www-form-urlencoded\" method=\"POST\"><table><tr><th>what</th><th>setting</th></tr><tr><td>server</td><td><input type=\"text\" id=\"mqtt-server\" name=\"mqtt-server\" value=\"%s\"></td></tr><tr><td>port</td><td><input type=\"text\" id=\"mqtt-port\" name=\"mqtt-port\" value=\"%d\"></td></tr><tr><td>text topic</td><td><input type=\"text\" id=\"mqtt-text-topic\" name=\"mqtt-text-topic\" value=\"%s\"></td></tr><tr><td>bitmap topic</td><td><input type=\"text\" id=\"mqtt-bitmap-topic\" name=\"mqtt-bitmap-topic\" value=\"%s\"></td></tr><tr><td></td><td><input type=\"submit\"></td></tr></table></form></p></section>"
       "<footer><header><h2>what?</h2></header><p>Designed by <a href=\"mailto:folkert@komputilo.nl\">Folkert van Heusden</a>, see <a href=\"https://komputilo.nl/texts/lightbox/\">https://komputilo.nl/texts/lightbox/</a> for more details.</p></footer></article></body></html>",
-      tstr(enable_pixelflood), tstr(enable_mqtt_text), tstr(enable_mqtt_bitmap), tstr(enable_multicast), tstr(enable_screensaver), tstr(enable_ddp),
+      tstr(enable_pixelflood), tstr(enable_mqtt_text), tstr(enable_mqtt_bitmap), tstr(enable_multicast), tstr(enable_screensaver), tstr(enable_ddp), tstr(enable_text_anim),
       mqtt_server, mqtt_port, mqtt_text_topic, mqtt_bitmap_topic);
 	webServer->send(200, "text/html", p);
 }
@@ -455,6 +469,10 @@ void handleToggleScreensaver() {
 
 void handleToggleDdp() {
   toggle(&enable_ddp);
+}
+
+void handleToggleTextAnim() {
+  toggle(&enable_text_anim);
 }
 
 #define MATCH_BITS  6
@@ -640,6 +658,7 @@ void setup() {
   webServer->on("/toggle-multicast",   handleToggleMulticast  );
 	webServer->on("/toggle-screensaver", handleToggleScreensaver);
 	webServer->on("/toggle-ddp",         handleToggleDdp        );
+	webServer->on("/toggle-text-anim",   handleToggleTextAnim   );
 
 	webServer->on("/description.xml", HTTP_GET, []() { SSDP.schema(webServer->client()); });
 
