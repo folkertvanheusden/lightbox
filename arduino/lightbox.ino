@@ -565,7 +565,10 @@ void handleDdpData(const uint8_t *const buffer, const size_t n) {
 		int y = offset_offseted / (WIDTH * pixel_mul);
 		if (y < HEIGHT) {
 			int x = (offset_offseted / pixel_mul) % WIDTH;
-      setPixel(x, y, buffer[i + 0] >= 128);
+      if (pixel_mul == 3)
+        setPixel(x, y, buffer[i + 0] + buffer[i + 1] + buffer[i + 2] >= 128 * 3);
+      else
+        setPixel(x, y, buffer[i + 0] >= 128);
 		}
 	}
 }
