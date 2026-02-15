@@ -33,6 +33,8 @@
 #define EEPROM_SIZE        4096
 #define LRC_INIT           0x91
 #define BOX_WIDTH          28    // physical dimension, in cm
+#define PIXELFLOOD_ANNOUNCE_INTERVAL 1500
+#define DDP_ANNOUNCE_INTERVAL        1500
 
 WiFiUDP    UdpMC;  // multicast LZJB compressed bitmap (64x24)
 WiFiServer tcpPixelfloodServer(PIXELFLOOD_PORT);
@@ -414,51 +416,40 @@ void sendTogglesPage() {
 	webServer->send(200, "text/html", "<html><head><meta http-equiv=\"refresh\" content=\"1; URL=/\" /></head><body>done</body></html>");
 }
 
-void handleTogglePixelflood() {
-  enable_pixelflood = !enable_pixelflood;
+void toggle(bool *const flag) {
+  *flag = !*flag;
   writeSettings();
   readSettings();
   sendTogglesPage();
+}
+
+void handleTogglePixelflood() {
+  toggle(&enable_pixelflood);
 }
 
 void handleToggleMQTTText() {
-  enable_mqtt_text = !enable_mqtt_text;
-  writeSettings();
-  readSettings();
-  sendTogglesPage();
+  toggle(&enable_mqtt_text);
 }
 
 void handleToggleMQTTBitmap() {
-  enable_mqtt_bitmap = !enable_mqtt_bitmap;
-  writeSettings();
-  readSettings();
-  sendTogglesPage();
+  toggle(&enable_mqtt_bitmap);
 }
 
 void handleToggleMulticast() {
-  enable_multicast = !enable_multicast;
-  writeSettings();
-  readSettings();
-  sendTogglesPage();
+  toggle(&enable_multicast);
 }
 
 void handleToggleScreensaver() {
-  enable_screensaver = !enable_screensaver;
-  writeSettings();
-  readSettings();
-  sendTogglesPage();
+  toggle(&enable_screensaver);
 }
 
 void handleToggleDdp() {
-  enable_ddp = !enable_ddp;
-  writeSettings();
-  readSettings();
-  sendTogglesPage();
+  toggle(&enable_ddp);
 }
 
 #define MATCH_BITS  6
-#define MATCH_MIN 3
-#define MATCH_MAX ((1 << MATCH_BITS) + (MATCH_MIN - 1))
+#define MATCH_MIN   3
+#define MATCH_MAX   ((1 << MATCH_BITS) + (MATCH_MIN - 1))
 #define OFFSET_MASK ((1 << (16 - MATCH_BITS)) - 1)
 #define LEMPEL_SIZE 1024
 
@@ -529,7 +520,7 @@ void sendDdpAnnouncement(const bool wait, const IPAddress & ip, const uint16_t p
   if (wait) {
     static uint32_t prev_send = 0;
     uint32_t        now       = millis();
-    if (now - prev_send < 1500)
+    if (now - prev_send < DDP_ANNOUNCE_INTERVAL)
       return;
     prev_send = now;
   }
@@ -923,7 +914,7 @@ bool processPixelflood(size_t nr) {
 void sendPixelfloodAnnouncement() {
   static uint32_t prev_send = 0;
 	uint32_t        now       = millis();
-  if (now - prev_send < 1500)
+  if (now - prev_send < PIXELFLOOD_ANNOUNCE_INTERVAL)
     return;
   prev_send = now;
   auto ip = WiFi.localIP();
