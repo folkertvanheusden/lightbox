@@ -614,8 +614,6 @@ void setup() {
 	Serial.setDebugOutput(true);
 	Serial.println(F("Init"));
 
-	snprintf(name, sizeof name, "L-B-%u", ESP.getChipId());
-
 	for(int z = 0; z < NP; z++) {
 		lc1.shutdown(z, false);
 		lc1.setIntensity(z, 1);
@@ -627,6 +625,8 @@ void setup() {
 		lc3.setIntensity(z, 1);
 		lc3.clearDisplay(z);
 	}
+
+	snprintf(name, sizeof name, "L-B-%u", ESP.getChipId());
 
 	data[0] = 1;
   putScreen();
