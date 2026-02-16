@@ -213,7 +213,7 @@ void MQTT_connect() {
 
       cls();
 			if (mqttclient.connect(name)) {
-        text("MQTT OK", true);
+        // text("MQTT OK", true);
 				Serial.println(F("Connected"));
 				break;
 			}
