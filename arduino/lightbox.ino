@@ -883,23 +883,32 @@ bool processTxtPixelfloodPixel(const char *const buf, const char *const buf_end)
   if (y < 0 || y >= HEIGHT)
     return false;
 
-  if (buf_end - sp[2] < 6)
+  if (buf_end - sp[2] < 7)
     return false;
 
-  int r      = 0;
+  // evaluate r, g and b: only upper nibble
+  int  r     = 0;
   char n1    = toupper(sp[2][1]);
   if (n1 >= 'A')
-    r = (n1 - 'A' + 10) << 4;
+    r = n1 - 'A' + 10;
   else
-    r = (n1 - '0') << 4;
-  /*
-     char n2    = toupper(sp[2][2]);
-     if (n2 >= 'A')
-     r += n2 - 'A' + 10;
-     else
-     r += n2 - '0';
-     */
-  setPixel(x, y, r >= 128);
+    r = n1 - '0';
+
+  int  g      = 0;
+  char n2     = toupper(sp[2][3]);
+  if (n2 >= 'A')
+    g = n2 - 'A' + 10;
+  else
+    g = n2 - '0';
+
+  int  b      = 0;
+  char n3     = toupper(sp[2][5]);
+  if (n3 >= 'A')
+    b = n3 - 'A' + 10;
+  else
+    b = n3 - '0';
+
+  setPixel(x, y, (r + g + b) >= 8 * 3);
   return true;
 }
 
@@ -937,9 +946,9 @@ bool processTxtPixelflood(size_t nr) {
 }
 
 // https://github.com/JanKlopper/pixelvloed/blob/master/protocol.md
-void processBinPixelflood(const uint16_t len) {
+bool processBinPixelflood(const uint16_t len) {
   if (len < 2)
-    return;
+    return false;
   const uint8_t *const pb = work_buffer;
   bool alpha = work_buffer[1] & 1;
 
@@ -947,10 +956,10 @@ void processBinPixelflood(const uint16_t len) {
     for(uint16_t i=2; i<len; i += (alpha ? 8 : 7)) {
       uint16_t x = pb[i + 0] + (pb[i + 1] << 8);
       if (x >= WIDTH)
-        return;
+        return false;
       uint16_t y = pb[i + 2] + (pb[i + 3] << 8);
       if (y >= HEIGHT)
-        return;
+        return false;
       uint8_t g = (pb[i + 4] + pb[i + 5] + pb[i + 6]) / 3;
       setPixel(x, y, g >= 128);
     }
@@ -959,10 +968,10 @@ void processBinPixelflood(const uint16_t len) {
     for(uint16_t i=2; i<len; i += (alpha ? 7 : 6)) {
       uint16_t x = pb[i + 0] + ((pb[i + 1] & 0x0f) << 8);
       if (x >= WIDTH)
-        return;
+        return false;
       uint16_t y = (pb[i + 1] >> 4) + (pb[i + 2] << 4);
       if (y >= HEIGHT)
-        return;
+        return false;
       uint8_t g = (pb[i + 3] + pb[i + 4] + pb[i + 5]) / 3;
       setPixel(x, y, g >= 128);
     }
@@ -971,25 +980,33 @@ void processBinPixelflood(const uint16_t len) {
     for(uint16_t i=2; i<len; i += 4) {
       uint16_t x = pb[i + 0] + ((pb[i + 1] & 0x0f) << 8);
       if (x >= WIDTH)
-        return;
+        return false;
       uint16_t y = (pb[i + 1] >> 4) + (pb[i + 2] << 4);
       if (y >= HEIGHT)
-        return;
-      setPixel(x, y, pb[i] >= 128);  // only check red channel
-    }
-  }
-  else if (pb[0] == 3) {
-    bool c = pb[1] >= 128;
-    for(uint16_t i=2; i<len; i += 3) {
-      uint16_t x = pb[i + 0] + ((pb[i + 1] & 0x0f) << 8);
-      if (x >= WIDTH)
-        return;
-      uint16_t y = (pb[i + 1] >> 4) + (pb[i + 2] << 4);
-      if (y >= HEIGHT)
-        return;
+        return false;
+      uint8_t temp = pb[i];
+      bool c = ((temp >> 6) + ((temp >> 4) & 3) + ((temp >> 2) & 3) + (temp & 3)) >= 2;
       setPixel(x, y, c);
     }
   }
+  else if (pb[0] == 3) {
+    uint8_t temp = pb[1];
+    bool c = ((temp >> 6) + ((temp >> 4) & 3) + ((temp >> 2) & 3) + (temp & 3)) >= 2;
+    for(uint16_t i=2; i<len; i += 3) {
+      uint16_t x = pb[i + 0] + ((pb[i + 1] & 0x0f) << 8);
+      if (x >= WIDTH)
+        return false;
+      uint16_t y = (pb[i + 1] >> 4) + (pb[i + 2] << 4);
+      if (y >= HEIGHT)
+        return false;
+      setPixel(x, y, c);
+    }
+  }
+  else {
+    return false;
+  }
+
+  return true;
 }
 
 void sendBinPixelfloodAnnouncement() {
@@ -1100,7 +1117,10 @@ void loop() {
     int packetSizeBin = udpBinPixelfloodServer.parsePacket();
     if (packetSizeBin) {
       uint16_t len = udpBinPixelfloodServer.read(work_buffer, sizeof work_buffer);
-      processBinPixelflood(len);
+      if (processBinPixelflood(len)) {
+        drawn_anything = true;
+        activity       = true;
+      }
     }
   }
 
