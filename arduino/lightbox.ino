@@ -248,10 +248,18 @@ void MQTT_connect() {
 	}
 }
 
+void wifiCfgEnabled(WiFiManager *) {
+  text("configure");
+  text("WiFi");
+  text("please");
+}
+
 void setupWifi() {
 	WiFi.hostname(name);
 	WiFi.begin();
 
+	wifiManager.setDebugOutput(true);
+  wifiManager.setAPCallback(wifiCfgEnabled);
 	if (!wifiManager.autoConnect(name)) {
     WiFi.printDiag(Serial);
 		reboot();
@@ -294,6 +302,7 @@ void enableOTA() {
 	ArduinoOTA.setPassword("g3h31m");
 
 	ArduinoOTA.onStart([]() {
+        clear_text();
         cls();
         text("",        true);
         text("OTA upd", true);
@@ -301,6 +310,7 @@ void enableOTA() {
         in_ota = true;
 			});
 	ArduinoOTA.onEnd([]() {
+        clear_text();
         cls();
         text("OTA upd",  true);
         text("finished", true);
@@ -311,6 +321,7 @@ void enableOTA() {
         putScreen();
 			});
 	ArduinoOTA.onError([](ota_error_t error) {
+        clear_text();
         cls();
         text("OTA upd", true);
         text("error:",  true);
@@ -457,6 +468,13 @@ void handleSetMqtt() {
 
     restartMqtt();
   }
+}
+
+void handleResetWiFi() {
+  wifiManager.resetSettings();
+  ESP.eraseConfig();
+	webServer->send(200, "text/css", F("Reset OK"));
+  reboot();
 }
 
 void handleSimpleCSS() {
@@ -661,6 +679,7 @@ void setup() {
 	webServer->on("/favicon.ico",        handleFavicon   );
 	webServer->on("/screendump.bmp",     handleScreendump);
 	webServer->on("/simple.css",         handleSimpleCSS );
+	webServer->on("/reset-wifi",         handleResetWiFi );
 
 	webServer->on("/set-mqtt",           HTTP_POST, handleSetMqtt);
 
@@ -723,6 +742,12 @@ void setup() {
 
 void cls() {
   memset(data, 0x00, sizeof data);
+}
+
+void clear_text() {
+  memset(bline1, 0x00, sizeof bline1);
+  memset(bline2, 0x00, sizeof bline2);
+  memset(bline3, 0x00, sizeof bline3);
 }
 
 bool getPixel(const int x, const int y) {
