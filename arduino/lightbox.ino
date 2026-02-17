@@ -255,6 +255,7 @@ void setupWifi() {
   }
 
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
+  WiFi.setAutoReconnect(true);
 
 	Serial.println(WiFi.localIP());
 }
@@ -895,7 +896,7 @@ bool processTxtPixelfloodPixel(const char *const buf, const char *const buf_end)
   if (y < 0 || y >= HEIGHT)
     return false;
 
-  if (buf_end - sp[2] < 7)
+  if (buf_end - sp[2] < 6)
     return false;
 
   // evaluate r, g and b: only upper nibble
@@ -1150,14 +1151,14 @@ void loop() {
   }
 
   if (enable_ddp) {
-    sendDdpAnnouncement(false, broadcast, DDP_PORT);
+    sendDdpAnnouncement(true, broadcast, DDP_PORT);
 
     int packetSizeDdp = udpDdp.parsePacket();
     if (packetSizeDdp) {
       int len = udpDdp.read(work_buffer, sizeof work_buffer);
 
       if (work_buffer[3] == 251 && (work_buffer[0] & 2))
-        sendDdpAnnouncement(true, udpDdp.remoteIP(), udpDdp.remotePort());
+        sendDdpAnnouncement(false, udpDdp.remoteIP(), udpDdp.remotePort());
       else {
         handleDdpData(work_buffer, len);
         drawn_anything = true;
@@ -1188,19 +1189,21 @@ void loop() {
     mode = 0;
     prev = now;
   }
-  else if (enable_screensaver) {
-		if (now - prev >= SCREENSAVER_START) {  // slightly more than 2 seconds
-			static uint32_t prev_d2 = 0;
+  else {
+    if (enable_screensaver) {
+      if (now - prev >= SCREENSAVER_START) {  // slightly more than 2 seconds
+        static uint32_t prev_d2 = 0;
 
-			if (mode == 0 || now - prev_d2 >= SCREENSAVER_ROTATE) {
-				cls();
-				mode = (rand() % 3) + 1;
-				prev_d2 = now;
-			}
+        if (mode == 0 || now - prev_d2 >= SCREENSAVER_ROTATE) {
+          cls();
+          mode = (rand() % 3) + 1;
+          prev_d2 = now;
+        }
 
-			animate(mode);
-      drawn_anything = true;
-		}
+        animate(mode);
+        drawn_anything = true;
+      }
+    }
 	}
 
   if (drawn_anything)
