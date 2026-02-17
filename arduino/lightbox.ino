@@ -47,10 +47,12 @@ WiFiUDP    udpText;
 WiFiUDP    udpAnnounceBinPixelflood;
 uint8_t    broadcast[4] { };
 
-char       mqtt_server      [64] { "vps001.komputilo.nl"   };
-char       mqtt_text_topic  [64] { "nurdspace/hek42ticker" };
-char       mqtt_bitmap_topic[64] { "nurdspace/hek42tocker" };
-uint16_t   mqtt_port             { 1883                    };
+char       mqtt_server       [64] { "vps001.komputilo.nl"    };
+char       mqtt_text_topic   [64] { "nurdspace/hek42ticker"  };
+char       mqtt_bitmap_topic [64] { "nurdspace/hek42tocker"  };
+char       mqtt_on_topic     [64] { "nurdspace/on_off_notif" };
+char       mqtt_on_topic_full[98];
+uint16_t   mqtt_port              { 1883                     };
 
 #define BS  48
 struct pf {
@@ -71,7 +73,7 @@ WiFiManager wifiManager;
 #include <ESP8266HTTPUpdateServer.h>
 ESP8266HTTPUpdateServer httpUpdater;
 
-ESP8266WebServer *webServer = nullptr;
+ESP8266WebServer *webServer { nullptr };
 
 #define NP 8
 /* int dataPin, int clkPin, int csPin, int NP */
@@ -216,7 +218,8 @@ void MQTT_connect() {
       Serial.println(mqtt_server);
 
       cls();
-			if (mqttclient.connect(name)) {
+      snprintf(mqtt_on_topic_full, sizeof mqtt_on_topic_full, "%s/%s", mqtt_on_topic, &name[4]);  // include serial number
+			if (mqttclient.connect(name, "", "", mqtt_on_topic_full, 1, true, "0")) {
         // text("MQTT OK", true);
 				Serial.println(F("Connected"));
 				break;
@@ -233,6 +236,9 @@ void MQTT_connect() {
     if (MQTT_subscribe(mqtt_text_topic) == false || MQTT_subscribe(mqtt_bitmap_topic) == false) {
       cls();
       text("MQTT ERR", true);
+    }
+    else {
+      mqttclient.publish(mqtt_on_topic_full, "1");
     }
 
 		mqttclient.loop();
@@ -385,10 +391,10 @@ void handleRoot() {
       "<p><dl><dt>Built on</dt><dd><time>" __DATE__ " " __TIME__ "</time></dt></dl><dt>GIT revision:</dt><dd>" __GIT_REVISION__ "</dd></dl></p></section>"
       "<section><header><h2>screenshot</h2></header><p><img src=\"/screendump.bmp\" alt=\"screen shot\"></p></section>"
       "<section><header><h2>toggles</h2></header><p><table><tr><th>what</th><th>state</th><tr><td><a href=\"/toggle-pixelflood\">pixelflood</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-mqtt-text\">MQTT text</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-mqtt-bitmap\">MQTT bitmap</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-multicast\">multicast</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-screensaver\">screensaver</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-ddp\">ddp</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-text-anim\">text animation</a></td><td>%s</td></tr></table></section>"
-      "<section><header><h2>MQTT settings</h2></header><p><form action=\"/set-mqtt\" enctype=\"application/x-www-form-urlencoded\" method=\"POST\"><table><tr><th>what</th><th>setting</th></tr><tr><td>server</td><td><input type=\"text\" id=\"mqtt-server\" name=\"mqtt-server\" value=\"%s\"></td></tr><tr><td>port</td><td><input type=\"text\" id=\"mqtt-port\" name=\"mqtt-port\" value=\"%d\"></td></tr><tr><td>text topic</td><td><input type=\"text\" id=\"mqtt-text-topic\" name=\"mqtt-text-topic\" value=\"%s\"></td></tr><tr><td>bitmap topic</td><td><input type=\"text\" id=\"mqtt-bitmap-topic\" name=\"mqtt-bitmap-topic\" value=\"%s\"></td></tr><tr><td></td><td><input type=\"submit\"></td></tr></table></form></p></section>"
+      "<section><header><h2>MQTT settings</h2></header><p><form action=\"/set-mqtt\" enctype=\"application/x-www-form-urlencoded\" method=\"POST\"><table><tr><th>what</th><th>setting</th></tr><tr><td>server</td><td><input type=\"text\" id=\"mqtt-server\" name=\"mqtt-server\" value=\"%s\"></td></tr><tr><td>port</td><td><input type=\"text\" id=\"mqtt-port\" name=\"mqtt-port\" value=\"%d\"></td></tr><tr><td>text topic</td><td><input type=\"text\" id=\"mqtt-text-topic\" name=\"mqtt-text-topic\" value=\"%s\"></td></tr><tr><td>bitmap topic</td><td><input type=\"text\" id=\"mqtt-bitmap-topic\" name=\"mqtt-bitmap-topic\" value=\"%s\"></td></tr><tr><td>on/off notification</td><td><input type=\"text\" id=\"mqtt-on-off-topic\" name=\"mqtt-on-off-topic\" value=\"%s\"></td></tr><tr><td></td><td><input type=\"submit\"></td></tr></table></form></p></section>"
       "<footer><header><h2>what?</h2></header><p>Designed by <a href=\"mailto:folkert@komputilo.nl\">Folkert van Heusden</a>, see <a href=\"https://komputilo.nl/texts/lightbox/\">https://komputilo.nl/texts/lightbox/</a> for more details.</p></footer></article></body></html>",
       tstr(enable_pixelflood), tstr(enable_mqtt_text), tstr(enable_mqtt_bitmap), tstr(enable_multicast), tstr(enable_screensaver), tstr(enable_ddp), tstr(enable_text_anim),
-      mqtt_server, mqtt_port, mqtt_text_topic, mqtt_bitmap_topic);
+      mqtt_server, mqtt_port, mqtt_text_topic, mqtt_bitmap_topic, mqtt_on_topic);
 	webServer->send(200, "text/html", p);
 }
 
@@ -421,6 +427,12 @@ void handleSetMqtt() {
   temp = webServer->arg("mqtt-bitmap-topic");
   if (temp.length() < sizeof(mqtt_bitmap_topic))
     strcpy(mqtt_bitmap_topic, temp.c_str());
+  else
+    fail = true;
+
+  temp = webServer->arg("mqtt-on-off-topic");
+  if (temp.length() < sizeof(mqtt_on_topic))
+    strcpy(mqtt_on_topic, temp.c_str());
   else
     fail = true;
 
