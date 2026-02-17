@@ -707,14 +707,12 @@ void setup() {
   putScreen();
 
 	udpMC.beginMulticast(WiFi.localIP(), IPAddress(226, 1, 1, 9), 32009);
-  tcpTxtPixelfloodServer.begin();
-  udpTxtPixelfloodServer.begin(PIXELFLOOD_TXT_PORT);
-  udpBinPixelfloodServer.begin(PIXELFLOOD_BIN_PORT);
+  tcpTxtPixelfloodServer  .begin(                            );
+  udpTxtPixelfloodServer  .begin(PIXELFLOOD_TXT_PORT         );
+  udpBinPixelfloodServer  .begin(PIXELFLOOD_BIN_PORT         );
   udpAnnounceBinPixelflood.begin(PIXELFLOOD_BIN_ANNOUNCE_PORT);
-
-  udpDdp.begin(DDP_PORT);
-
-  udpText.begin(TEXT_PORT);
+  udpDdp                  .begin(DDP_PORT                    );
+  udpText                 .begin(TEXT_PORT                   );
 
   auto ip = WiFi.localIP();
   auto netmask = WiFi.subnetMask();
