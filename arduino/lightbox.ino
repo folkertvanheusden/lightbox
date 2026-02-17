@@ -23,6 +23,7 @@
 #include "font.h"
 #include "simple-css.h"
 
+#define DEBUG
 #define SCREENSAVER_START   2100
 #define SCREENSAVER_ROTATE  15000
 #define WIDTH               64
@@ -62,6 +63,8 @@ struct pf {
 };
 
 std::vector<pf> pfClients;
+
+static bool in_ota = false;
 
 WiFiClient   wclient;
 PubSubClient mqttclient(wclient);
@@ -174,8 +177,8 @@ inline IRAM_ATTR void setPixel(const int x, const int y, const bool c)
   uint16_t base = (y >> 3) * WIDTH;
   uint16_t o    = base + ((x >> 3) << 3) + 7 - (y & 7);
   uint8_t  bit  = c << (x & 7);
-  uint8_t *p    = &data[o];
-  *p = (*p & ~bit) | bit;
+  uint8_t *pp   = &data[o];
+  *pp = (*pp & ~bit) | bit;
 }
 
 char bline1[10] { };
@@ -295,6 +298,7 @@ void enableOTA() {
         text("",        true);
         text("OTA upd", true);
         text("start",   true);
+        in_ota = true;
 			});
 	ArduinoOTA.onEnd([]() {
         cls();
@@ -559,6 +563,10 @@ void sendDdpAnnouncement(const bool is_announncement, const IPAddress & ip, cons
   int msg_len = snprintf(&p[10], sizeof work_buffer - 10, "{\"status\" { \"man\": \"www.komputilo.nl\", \"mod\": \"Lightbox DDP server\", \"ver\": \"0.1\" } }");
 	work_buffer[8] = msg_len >> 8;
 	work_buffer[9] = msg_len;
+
+#if defined(DEBUG)
+  Serial.println(&p[10]);
+#endif
 
   udpDdp.beginPacket(ip, port);
   udpDdp.write(work_buffer, msg_len + 10);
@@ -870,8 +878,12 @@ void animate(int mode) {
 }
 
 bool processTxtPixelfloodPixel(const char *const buf, const char *const buf_end) {
-  if (buf[0] != 'P' || buf[1] != 'X' || buf[2] != ' ')
+  if (buf[0] != 'P' || buf[1] != 'X' || buf[2] != ' ') {
+#if defined(DEBUG)
+    Serial.println(F("No PX header"));
+#endif
     return false;
+  }
 
   const char *sp[3] { nullptr, nullptr, nullptr };
   int n_sp = 0;
@@ -881,19 +893,35 @@ bool processTxtPixelfloodPixel(const char *const buf, const char *const buf_end)
       sp[n_sp++]= pb;
     pb++;
   }
-  if (n_sp != 3)
+  if (n_sp != 3) {
+#if defined(DEBUG)
+    Serial.println(F("Field missing"));
+#endif
     return false;
+  }
 
   int x = atoi(sp[0]);
-  if (x < 0 || x >= WIDTH)
+  if (x < 0 || x >= WIDTH) {
+#if defined(DEBUG)
+    Serial.println(F("x out of range"));
+#endif
     return false;
+  }
 
   int y = atoi(sp[1]);
-  if (y < 0 || y >= HEIGHT)
+  if (y < 0 || y >= HEIGHT) {
+#if defined(DEBUG)
+    Serial.println(F("y out of range"));
+#endif
     return false;
+  }
 
-  if (buf_end - sp[2] < 6)
+  if (buf_end - sp[2] < 6) {
+#if defined(DEBUG)
+    Serial.println(F("RGB invalid?"));
+#endif
     return false;
+  }
 
   // evaluate r, g and b: only upper nibble
   int  r     = 0;
@@ -917,7 +945,11 @@ bool processTxtPixelfloodPixel(const char *const buf, const char *const buf_end)
   else
     b = n3 - '0';
 
-  setPixel(x, y, (r + g + b) >= 8 * 3);
+  bool c = (r + g + b) >= 8 * 3;
+#if defined(DEBUG)
+  Serial.printf("%d,%d:%d\r\n", x, y, c);
+#endif
+  setPixel(x, y, c);
   return true;
 }
 
@@ -933,18 +965,31 @@ bool processTxtPixelflood(size_t nr) {
       char buffer[16];
       snprintf(buffer, sizeof buffer, "SIZE %d %d\n", WIDTH, HEIGHT);
       pfClients.at(nr).handle.print(buffer);
+#if defined(DEBUG)
+      Serial.println(F("SIZE request"));
+#endif
     }
     else if (lf - buf < 13) {
+#if defined(DEBUG)
+      Serial.println(F("PX request too small"));
+#endif
       return false;
     }
     else if (!processTxtPixelfloodPixel(buf, lf)) {
+#if defined(DEBUG)
+      Serial.println(F("processTxtPixelfloodPixel failed"));
+#endif
       return false;
     }
 
     int was_length = lf - pfClients[nr].buffer + 1;
     int bytes_left = pfClients[nr].o - was_length;
-    if (bytes_left < 0)  // internal error
+    if (bytes_left < 0) {  // internal error
+#if defined(DEBUG)
+      Serial.println(F("processTxtPixelflood internal error"));
+#endif
       return false;
+    }
 
     if (bytes_left > 0)
       memmove(&pfClients[nr].buffer[0], lf + 1, bytes_left);
@@ -1012,6 +1057,9 @@ bool processBinPixelflood(const uint16_t len) {
     }
   }
   else {
+#if defined(DEBUG)
+  Serial.println(F("Invalid protocol"));
+#endif
     return false;
   }
 
@@ -1026,15 +1074,23 @@ void sendBinPixelfloodAnnouncement() {
   prev_send = now;
   auto ip = WiFi.localIP();
   snprintf(p, sizeof work_buffer, "pixelvloed:1.00 %d.%d.%d.%d:%d %d*%d", ip[0], ip[1], ip[2], ip[3], PIXELFLOOD_BIN_PORT, WIDTH, HEIGHT);
+#if defined(DEBUG)
+  Serial.println(p);
+#endif
   udpAnnounceBinPixelflood.beginPacket(broadcast, PIXELFLOOD_BIN_ANNOUNCE_PORT);
   udpAnnounceBinPixelflood.write(p);
   udpAnnounceBinPixelflood.endPacket();
 }
 
 void loop() {
-	webServer->handleClient();
 	ArduinoOTA.handle();
-  MQTT_connect();
+  if (in_ota)
+    return;
+
+	webServer->handleClient();
+
+  if (enable_mqtt_bitmap || enable_mqtt_text)
+    MQTT_connect();
 
   bool activity       = false;
   bool drawn_anything = false;
@@ -1045,6 +1101,9 @@ void loop() {
     // pixelflood connection management
     WiFiClient newPixelfloodClient = tcpTxtPixelfloodServer.available();
     if (newPixelfloodClient) {
+#if defined(DEBUG)
+      Serial.println(F("new TCP client"));
+#endif
       // check if all still there
       for(size_t i=0; i<pfClients.size();) {
         if (pfClients.at(i).handle.connected() == false) {
@@ -1078,9 +1137,11 @@ void loop() {
         int c = pfClients[i].handle.read();
         if (c == -1)
           fail = true;
-        else if (pfClients[i].o >= BS)  // sanity check
-        { Serial.printf("too much data %d %d\r\n", pfClients[i].o, BS);
+        else if (pfClients[i].o >= BS) {  // sanity check
+#if defined(DEBUG)
+          Serial.printf("too much data %d %d\r\n", pfClients[i].o, BS);
           Serial.println(pfClients[i].buffer);
+#endif
           fail = true;
         }
         else {
@@ -1107,6 +1168,9 @@ void loop() {
     int packetSizeTxt = udpTxtPixelfloodServer.parsePacket();
     if (packetSizeTxt) {
       int len = udpTxtPixelfloodServer.read(work_buffer, sizeof(work_buffer) - 1);
+#if defined(DEBUG)
+      Serial.printf("UDPTXT: %d, %s\r\n", len, p);
+#endif
       work_buffer[len] = 0x00;
       char *work_p = p;  // p is a char-pointer to work_buffer
       for(;;) {
@@ -1126,6 +1190,9 @@ void loop() {
     int packetSizeBin = udpBinPixelfloodServer.parsePacket();
     if (packetSizeBin) {
       uint16_t len = udpBinPixelfloodServer.read(work_buffer, sizeof work_buffer);
+#if defined(DEBUG)
+      Serial.printf("UDPBIN: %d\r\n", len);
+#endif
       if (processBinPixelflood(len)) {
         drawn_anything = true;
         activity       = true;
@@ -1139,6 +1206,9 @@ void loop() {
   if (enable_multicast) {
     int packetSizeMC = udpMC.parsePacket();
     if (packetSizeMC) {
+#if defined(DEBUG)
+      Serial.printf("UDPMC: %d\r\n", packetSizeMC);
+#endif
       int len = udpMC.read(work_buffer, sizeof work_buffer);
       lzjbDecompress(work_buffer, data, len, 192);
       drawn_anything = true;
@@ -1152,7 +1222,9 @@ void loop() {
     int packetSizeDdp = udpDdp.parsePacket();
     if (packetSizeDdp) {
       int len = udpDdp.read(work_buffer, sizeof work_buffer);
-
+#if defined(DEBUG)
+      Serial.printf("UDPDDP: %d\r\n", len);
+#endif
       if (work_buffer[3] == 251 && (work_buffer[0] & 2))
         sendDdpAnnouncement(false, udpDdp.remoteIP(), udpDdp.remotePort());
       else {
@@ -1168,6 +1240,9 @@ void loop() {
     int len = udpText.read(work_buffer, 9 * 3 + 1);
     if (len >= 0)
       work_buffer[len] = 0x00;
+#if defined(DEBUG)
+      Serial.printf("UDPTEXT: %d, %s\r\n", len, p);
+#endif
 
     char *p_work = p;
     for(;;) {
