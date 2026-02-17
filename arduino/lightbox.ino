@@ -408,11 +408,11 @@ void handleRoot() {
       "<section><header><h2>screenshot</h2></header><p><img src=\"/screendump.bmp\" alt=\"screen shot\"></p></section>"
       "<section><header><h2>toggles</h2></header><p><table><tr><th>what</th><th>state</th><tr><td><a href=\"/toggle-pixelflood\">pixelflood</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-mqtt-text\">MQTT text</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-mqtt-bitmap\">MQTT bitmap</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-multicast\">multicast</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-screensaver\">screensaver</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-ddp\">ddp</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-text-anim\">text animation</a></td><td>%s</td></tr></table></section>"
       "<section><header><h2>MQTT settings</h2></header><p><form action=\"/set-mqtt\" enctype=\"application/x-www-form-urlencoded\" method=\"POST\"><table><tr><th>what</th><th>setting</th></tr><tr><td>server</td><td><input type=\"text\" id=\"mqtt-server\" name=\"mqtt-server\" value=\"%s\"></td></tr><tr><td>port</td><td><input type=\"text\" id=\"mqtt-port\" name=\"mqtt-port\" value=\"%d\"></td></tr><tr><td>text topic</td><td><input type=\"text\" id=\"mqtt-text-topic\" name=\"mqtt-text-topic\" value=\"%s\"></td></tr><tr><td>bitmap topic</td><td><input type=\"text\" id=\"mqtt-bitmap-topic\" name=\"mqtt-bitmap-topic\" value=\"%s\"></td></tr><tr><td>on/off notification</td><td><input type=\"text\" id=\"mqtt-on-off-topic\" name=\"mqtt-on-off-topic\" value=\"%s\"></td></tr><tr><td></td><td><input type=\"submit\"></td></tr></table></form></p></section>"
-      "<section><header><h2>WiFi</h2></header><p>Connected to: <b>%s</b>.</p></section>"
+      "<section><header><h2>Miscellaneous</h2></header><p>Connected to: <b>%s</b><br>System ID: %s</p></section>"
       "<footer><header><h2>what?</h2></header><p>Designed by <a href=\"mailto:folkert@komputilo.nl\">Folkert van Heusden</a>, see <a href=\"https://komputilo.nl/texts/lightbox/\">https://komputilo.nl/texts/lightbox/</a> for more details.</p></footer></article></body></html>",
       tstr(enable_pixelflood), tstr(enable_mqtt_text), tstr(enable_mqtt_bitmap), tstr(enable_multicast), tstr(enable_screensaver), tstr(enable_ddp), tstr(enable_text_anim),
       mqtt_server, mqtt_port, mqtt_text_topic, mqtt_bitmap_topic, mqtt_on_topic,
-      WiFi.SSID().c_str());
+      WiFi.SSID().c_str(), &name[4]);
 	webServer->send(200, "text/html", p);
 }
 
