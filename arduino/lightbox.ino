@@ -23,24 +23,28 @@
 #include "font.h"
 #include "simple-css.h"
 
-#define SCREENSAVER_START  2100
-#define SCREENSAVER_ROTATE 15000
-#define WIDTH              64
-#define HEIGHT             24
-#define DDP_PORT           4048
-#define PIXELFLOOD_PORT    1337
-#define TEXT_PORT          5001
-#define EEPROM_SIZE        4096
-#define LRC_INIT           0x91
-#define BOX_WIDTH          28    // physical dimension, in cm
+#define SCREENSAVER_START   2100
+#define SCREENSAVER_ROTATE  15000
+#define WIDTH               64
+#define HEIGHT              24
+#define DDP_PORT            4048
+#define PIXELFLOOD_TXT_PORT 1337
+#define TEXT_PORT           5001
+#define EEPROM_SIZE         4096
+#define LRC_INIT            0x91
+#define BOX_WIDTH           28    // physical dimension, in cm, for BMP
 #define PIXELFLOOD_ANNOUNCE_INTERVAL 1500
+#define PIXELFLOOD_BIN_PORT          5000
+#define PIXELFLOOD_BIN_ANNOUNCE_PORT 5006
 #define DDP_ANNOUNCE_INTERVAL        1500
 
-WiFiUDP    UdpMC;  // multicast LZJB compressed bitmap (64x24)
-WiFiServer tcpPixelfloodServer(PIXELFLOOD_PORT);
-WiFiUDP    UdpDdp;
-WiFiUDP    UdpText;
-WiFiUDP    UdpAnnouncePixelflood;
+WiFiUDP    udpMC;  // multicast LZJB compressed bitmap (64x24)
+WiFiServer tcpTxtPixelfloodServer(PIXELFLOOD_TXT_PORT);
+WiFiUDP    udpTxtPixelfloodServer;
+WiFiUDP    udpBinPixelfloodServer;
+WiFiUDP    udpDdp;
+WiFiUDP    udpText;
+WiFiUDP    udpAnnounceBinPixelflood;
 uint8_t    broadcast[4] { };
 
 char       mqtt_server      [64] { "vps001.komputilo.nl"   };
@@ -543,9 +547,9 @@ void sendDdpAnnouncement(const bool is_announncement, const IPAddress & ip, cons
 	work_buffer[8] = msg_len >> 8;
 	work_buffer[9] = msg_len;
 
-  UdpDdp.beginPacket(ip, port);
-  UdpDdp.write(work_buffer, msg_len + 10);
-  UdpDdp.endPacket();
+  udpDdp.beginPacket(ip, port);
+  udpDdp.write(work_buffer, msg_len + 10);
+  udpDdp.endPacket();
  }
 
 void handleDdpData(const uint8_t *const buffer, const size_t n) {
@@ -660,13 +664,15 @@ void setup() {
 	data[0] = 7;
   putScreen();
 
-	UdpMC.beginMulticast(WiFi.localIP(), IPAddress(226, 1, 1, 9), 32009);
-  tcpPixelfloodServer.begin();
-  UdpAnnouncePixelflood.begin(PIXELFLOOD_PORT);
+	udpMC.beginMulticast(WiFi.localIP(), IPAddress(226, 1, 1, 9), 32009);
+  tcpTxtPixelfloodServer.begin();
+  udpTxtPixelfloodServer.begin(PIXELFLOOD_TXT_PORT);
+  udpBinPixelfloodServer.begin(PIXELFLOOD_BIN_PORT);
+  udpAnnounceBinPixelflood.begin(PIXELFLOOD_BIN_ANNOUNCE_PORT);
 
-  UdpDdp.begin(DDP_PORT);
+  udpDdp.begin(DDP_PORT);
 
-  UdpText.begin(TEXT_PORT);
+  udpText.begin(TEXT_PORT);
 
   auto ip = WiFi.localIP();
   auto netmask = WiFi.subnetMask();
@@ -854,7 +860,50 @@ void animate(int mode) {
 	}
 }
 
-bool processPixelflood(size_t nr) {
+bool processTxtPixelfloodPixel(const char *const buf, const char *const buf_end) {
+  if (buf[0] != 'P' || buf[1] != 'X' || buf[2] != ' ')
+    return false;
+
+  const char *sp[3] { nullptr, nullptr, nullptr };
+  int n_sp = 0;
+  const char *pb = buf;
+  while(pb < buf_end && n_sp < 3) {
+    if (*pb == ' ')
+      sp[n_sp++]= pb;
+    pb++;
+  }
+  if (n_sp != 3)
+    return false;
+
+  int x = atoi(sp[0]);
+  if (x < 0 || x >= WIDTH)
+    return false;
+
+  int y = atoi(sp[1]);
+  if (y < 0 || y >= HEIGHT)
+    return false;
+
+  if (buf_end - sp[2] < 6)
+    return false;
+
+  int r      = 0;
+  char n1    = toupper(sp[2][1]);
+  if (n1 >= 'A')
+    r = (n1 - 'A' + 10) << 4;
+  else
+    r = (n1 - '0') << 4;
+  /*
+     char n2    = toupper(sp[2][2]);
+     if (n2 >= 'A')
+     r += n2 - 'A' + 10;
+     else
+     r += n2 - '0';
+     */
+  setPixel(x, y, r >= 128);
+  return true;
+}
+
+bool processTxtPixelflood(size_t nr) {
   for(;;) {
     char *buf = pfClients.at(nr).buffer;
     char *lf  = strchr(buf, '\n');
@@ -870,46 +919,7 @@ bool processPixelflood(size_t nr) {
     else if (lf - buf < 13) {
       return false;
     }
-    else if (buf[0] == 'P' && buf[1] == 'X' && buf[2] == ' ')
-    {
-      char *sp[3] { nullptr, nullptr, nullptr };
-      int n_sp = 0;
-      char *pb = buf;
-      while(pb < lf && n_sp < 3) {
-        if (*pb == ' ')
-          sp[n_sp++]= pb;
-        pb++;
-      }
-      if (n_sp != 3)
-        return false;
-
-      int x = atoi(sp[0]);
-      if (x < 0 || x >= WIDTH)
-        return false;
-
-      int y = atoi(sp[1]);
-      if (y < 0 || y >= HEIGHT)
-        return false;
-
-      if (lf - sp[2] < 6)
-        return false;
-
-      int r      = 0;
-      char n1    = toupper(sp[2][1]);
-      if (n1 >= 'A')
-        r = (n1 - 'A' + 10) << 4;
-      else
-        r = (n1 - '0') << 4;
-/*
-      char n2    = toupper(sp[2][2]);
-      if (n2 >= 'A')
-        r += n2 - 'A' + 10;
-      else
-        r += n2 - '0';
-*/
-      setPixel(x, y, r >= 128);
-    }
-    else {
+    else if (!processTxtPixelfloodPixel(buf, lf)) {
       return false;
     }
 
@@ -926,17 +936,73 @@ bool processPixelflood(size_t nr) {
   return false;
 }
 
-void sendPixelfloodAnnouncement() {
+// https://github.com/JanKlopper/pixelvloed/blob/master/protocol.md
+void processBinPixelflood(const uint16_t len) {
+  if (len < 2)
+    return;
+  const uint8_t *const pb = work_buffer;
+  bool alpha = work_buffer[1] & 1;
+
+  if (pb[0] == 0) {
+    for(uint16_t i=2; i<len; i += (alpha ? 8 : 7)) {
+      uint16_t x = pb[i + 0] + (pb[i + 1] << 8);
+      if (x >= WIDTH)
+        return;
+      uint16_t y = pb[i + 2] + (pb[i + 3] << 8);
+      if (y >= HEIGHT)
+        return;
+      uint8_t g = (pb[i + 4] + pb[i + 5] + pb[i + 6]) / 3;
+      setPixel(x, y, g >= 128);
+    }
+  }
+  else if (pb[0] == 1) {
+    for(uint16_t i=2; i<len; i += (alpha ? 7 : 6)) {
+      uint16_t x = pb[i + 0] + ((pb[i + 1] & 0x0f) << 8);
+      if (x >= WIDTH)
+        return;
+      uint16_t y = (pb[i + 1] >> 4) + (pb[i + 2] << 4);
+      if (y >= HEIGHT)
+        return;
+      uint8_t g = (pb[i + 3] + pb[i + 4] + pb[i + 5]) / 3;
+      setPixel(x, y, g >= 128);
+    }
+  }
+  else if (pb[0] == 2) {
+    for(uint16_t i=2; i<len; i += 4) {
+      uint16_t x = pb[i + 0] + ((pb[i + 1] & 0x0f) << 8);
+      if (x >= WIDTH)
+        return;
+      uint16_t y = (pb[i + 1] >> 4) + (pb[i + 2] << 4);
+      if (y >= HEIGHT)
+        return;
+      setPixel(x, y, pb[i] >= 128);  // only check red channel
+    }
+  }
+  else if (pb[0] == 3) {
+    bool c = pb[1] >= 128;
+    for(uint16_t i=2; i<len; i += 3) {
+      uint16_t x = pb[i + 0] + ((pb[i + 1] & 0x0f) << 8);
+      if (x >= WIDTH)
+        return;
+      uint16_t y = (pb[i + 1] >> 4) + (pb[i + 2] << 4);
+      if (y >= HEIGHT)
+        return;
+      setPixel(x, y, c);
+    }
+  }
+}
+
+void sendBinPixelfloodAnnouncement() {
   static uint32_t prev_send = 0;
 	uint32_t        now       = millis();
   if (now - prev_send < PIXELFLOOD_ANNOUNCE_INTERVAL)
     return;
   prev_send = now;
   auto ip = WiFi.localIP();
-  snprintf(p, sizeof work_buffer, "pixelvloed:1.00 %d.%d.%d.%d:%d %d*%d", ip[0], ip[1], ip[2], ip[3], PIXELFLOOD_PORT, WIDTH, HEIGHT);
-  UdpAnnouncePixelflood.beginPacket(broadcast, PIXELFLOOD_PORT);
-  UdpAnnouncePixelflood.write(p);
-  UdpAnnouncePixelflood.endPacket();
+  snprintf(p, sizeof work_buffer, "pixelvloed:1.00 %d.%d.%d.%d:%d %d*%d", ip[0], ip[1], ip[2], ip[3], PIXELFLOOD_BIN_PORT, WIDTH, HEIGHT);
+  udpAnnounceBinPixelflood.beginPacket(broadcast, PIXELFLOOD_BIN_ANNOUNCE_PORT);
+  udpAnnounceBinPixelflood.write(p);
+  udpAnnounceBinPixelflood.endPacket();
 }
 
 void loop() {
@@ -948,10 +1014,10 @@ void loop() {
   bool drawn_anything = false;
 
   if (enable_pixelflood) {
-    sendPixelfloodAnnouncement();
+    sendBinPixelfloodAnnouncement();
 
     // pixelflood connection management
-    WiFiClient newPixelfloodClient = tcpPixelfloodServer.available();
+    WiFiClient newPixelfloodClient = tcpTxtPixelfloodServer.available();
     if (newPixelfloodClient) {
       // check if all still there
       for(size_t i=0; i<pfClients.size();) {
@@ -991,12 +1057,13 @@ void loop() {
           Serial.println(pfClients[i].buffer);
           fail = true;
         }
-        else
+        else {
           pfClients[i].buffer[pfClients[i].o++] = char(c);
+        }
 
         if (c == '\n') {
           pfClients[i].buffer[BS - 1] = 0x00;
-          if (processPixelflood(i))
+          if (processTxtPixelflood(i))
             drawn_anything = true;
           else
             fail = true;
@@ -1009,15 +1076,41 @@ void loop() {
         }
       }
     }
+
+    // check UDP text pixelflood
+    int packetSizeTxt = udpTxtPixelfloodServer.parsePacket();
+    if (packetSizeTxt) {
+      int len = udpTxtPixelfloodServer.read(work_buffer, sizeof(work_buffer) - 1);
+      work_buffer[len] = 0x00;
+      char *work_p = p;  // p is a char-pointer to work_buffer
+      for(;;) {
+        char *lf = strchr(work_p, '\n');
+        if (!lf)
+          break;
+        if (processTxtPixelfloodPixel(work_p, lf) == false)
+          break;
+        work_p = lf + 1;
+      }
+
+      drawn_anything = true;
+      activity       = true;
+    }
+
+    // check UDP bin pixelflood
+    int packetSizeBin = udpBinPixelfloodServer.parsePacket();
+    if (packetSizeBin) {
+      uint16_t len = udpBinPixelfloodServer.read(work_buffer, sizeof work_buffer);
+      processBinPixelflood(len);
+    }
   }
 
 	static uint32_t prev         = 0;
 	static int      mode         = 0;
 	uint32_t        now          = millis();
   if (enable_multicast) {
-    int packetSizeMC = UdpMC.parsePacket();
+    int packetSizeMC = udpMC.parsePacket();
     if (packetSizeMC) {
-      int len = UdpMC.read(work_buffer, sizeof work_buffer);
+      int len = udpMC.read(work_buffer, sizeof work_buffer);
       lzjbDecompress(work_buffer, data, len, 192);
       drawn_anything = true;
       activity       = true;
@@ -1027,12 +1120,12 @@ void loop() {
   if (enable_ddp) {
     sendDdpAnnouncement(false, broadcast, DDP_PORT);
 
-    int packetSizeDdp = UdpDdp.parsePacket();
+    int packetSizeDdp = udpDdp.parsePacket();
     if (packetSizeDdp) {
-      int len = UdpDdp.read(work_buffer, sizeof work_buffer);
+      int len = udpDdp.read(work_buffer, sizeof work_buffer);
 
       if (work_buffer[3] == 251 && (work_buffer[0] & 2))
-        sendDdpAnnouncement(true, UdpDdp.remoteIP(), UdpDdp.remotePort());
+        sendDdpAnnouncement(true, udpDdp.remoteIP(), udpDdp.remotePort());
       else {
         handleDdpData(work_buffer, len);
         drawn_anything = true;
@@ -1041,9 +1134,9 @@ void loop() {
     }
   }
 
-  int packetSizeText = UdpText.parsePacket();
+  int packetSizeText = udpText.parsePacket();
   if (packetSizeText) {
-    int len = UdpText.read(work_buffer, 9 * 3 + 1);
+    int len = udpText.read(work_buffer, 9 * 3 + 1);
     if (len >= 0)
       work_buffer[len] = 0x00;
 
