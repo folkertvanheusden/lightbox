@@ -23,7 +23,7 @@
 #include "font.h"
 #include "simple-css.h"
 
-#define DEBUG
+// #define DEBUG
 #define SCREENSAVER_START   2100
 #define SCREENSAVER_ROTATE  15000
 #define WIDTH               64
