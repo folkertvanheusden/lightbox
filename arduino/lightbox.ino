@@ -821,11 +821,11 @@ void circle(int r, int cx, int cy, std::vector<std::pair<int, int> > *const out)
 }
 
 void animate(int mode) {
+	cls();
 	if (mode == 1) {
 		static int y = 0;
 		static int d = 1;
 
-		cls();
 		for(int x=0; x<WIDTH; x++)
 			setPixel(x, y, true);
 
@@ -843,7 +843,6 @@ void animate(int mode) {
 		static int x = 0;
 		static int y = 0;
 
-    cls();
 		setPixel(x, y, true);
 
 		x++;
@@ -867,9 +866,6 @@ void animate(int mode) {
 			for(const auto & pixel : pixels[i])
 				setPixel(pixel.first, pixel.second, !getPixel(pixel.first, pixel.second));
 		}
-	}
-	else {
-		cls();
 	}
 }
 
