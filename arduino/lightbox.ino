@@ -238,7 +238,7 @@ void MQTT_connect() {
       text("MQTT ERR", true);
     }
     else {
-      mqttclient.publish(mqtt_on_topic_full, "1");
+      mqttclient.publish(mqtt_on_topic_full, "1", true);
     }
 
 		mqttclient.loop();
