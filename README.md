@@ -19,4 +19,7 @@ See https://komputilo.nl/texts/lightbox/ for more details.
 * python/ contains some example Python scripts to interact with it altough Pixelflood and DDP will work just fine
 
 
+Disable DDP in this program if your LedFX starts to behave badly.
+
+
 Written by Folkert van Heusden
