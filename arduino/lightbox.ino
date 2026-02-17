@@ -317,8 +317,13 @@ void enableOTA() {
 			});
 	ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
         Serial.printf("OTA progress: %u%%\r", progress * 100 / total);
-        setPixel(progress * WIDTH / total, 1, true);
-        putScreen();
+        static byte px = 255;
+        byte        x  = progress * WIDTH / total;
+        if (x != px) {
+          px = x;
+          setPixel(progress * WIDTH / total, 1, true);
+          putScreen();
+        }
 			});
 	ArduinoOTA.onError([](ota_error_t error) {
         clear_text();
@@ -902,6 +907,20 @@ void animate(int mode) {
 	}
 }
 
+bool setPixelChecked(const unsigned x, const unsigned y, const bool c) {
+#if defined(DEBUG)
+  Serial.printf("%d,%d:%d\r\n", x, y, c);
+#endif
+  if (x >= WIDTH || y >= HEIGHT) {
+#if defined(DEBUG)
+    Serial.println(F("X/Y out or range"));
+#endif
+    return false;
+  }
+  setPixel(x, y, c);
+  return true;
+}
+
 bool processTxtPixelfloodPixel(const char *const buf, const char *const buf_end) {
   if (buf[0] != 'P' || buf[1] != 'X' || buf[2] != ' ') {
 #if defined(DEBUG)
@@ -926,20 +945,7 @@ bool processTxtPixelfloodPixel(const char *const buf, const char *const buf_end)
   }
 
   int x = atoi(sp[0]);
-  if (x < 0 || x >= WIDTH) {
-#if defined(DEBUG)
-    Serial.println(F("x out of range"));
-#endif
-    return false;
-  }
-
   int y = atoi(sp[1]);
-  if (y < 0 || y >= HEIGHT) {
-#if defined(DEBUG)
-    Serial.println(F("y out of range"));
-#endif
-    return false;
-  }
 
   if (buf_end - sp[2] < 6) {
 #if defined(DEBUG)
@@ -971,11 +977,7 @@ bool processTxtPixelfloodPixel(const char *const buf, const char *const buf_end)
     b = n3 - '0';
 
   bool c = (r + g + b) >= 8 * 3;
-#if defined(DEBUG)
-  Serial.printf("%d,%d:%d\r\n", x, y, c);
-#endif
-  setPixel(x, y, c);
-  return true;
+  return setPixelChecked(x, y, c);
 }
 
 bool processTxtPixelflood(size_t nr) {
@@ -1026,59 +1028,51 @@ bool processTxtPixelflood(size_t nr) {
 
 // https://github.com/JanKlopper/pixelvloed/blob/master/protocol.md
 bool processBinPixelflood(const uint16_t len) {
-  if (len < 2)
+  if (len < 2) {
+#if defined(DEBUG)
+    Serial.println(F("Packet too shot"));
+#endif
     return false;
-  const uint8_t *const pb = work_buffer;
-  bool alpha = work_buffer[1] & 1;
+  }
+  const uint8_t *const pb    = work_buffer;
+  const bool           alpha = work_buffer[1] & 1;
 
   if (pb[0] == 0) {
     for(uint16_t i=2; i<len; i += (alpha ? 8 : 7)) {
       uint16_t x = pb[i + 0] + (pb[i + 1] << 8);
-      if (x >= WIDTH)
-        return false;
       uint16_t y = pb[i + 2] + (pb[i + 3] << 8);
-      if (y >= HEIGHT)
+      uint8_t  g = (pb[i + 4] + pb[i + 5] + pb[i + 6]) / 3;
+      if (!setPixelChecked(x, y, g >= 128))
         return false;
-      uint8_t g = (pb[i + 4] + pb[i + 5] + pb[i + 6]) / 3;
-      setPixel(x, y, g >= 128);
     }
   }
   else if (pb[0] == 1) {
     for(uint16_t i=2; i<len; i += (alpha ? 7 : 6)) {
       uint16_t x = pb[i + 0] + ((pb[i + 1] & 0x0f) << 8);
-      if (x >= WIDTH)
-        return false;
       uint16_t y = (pb[i + 1] >> 4) + (pb[i + 2] << 4);
-      if (y >= HEIGHT)
+      uint8_t  g = (pb[i + 3] + pb[i + 4] + pb[i + 5]) / 3;
+      if (!setPixelChecked(x, y, g >= 128))
         return false;
-      uint8_t g = (pb[i + 3] + pb[i + 4] + pb[i + 5]) / 3;
-      setPixel(x, y, g >= 128);
     }
   }
   else if (pb[0] == 2) {
     for(uint16_t i=2; i<len; i += 4) {
-      uint16_t x = pb[i + 0] + ((pb[i + 1] & 0x0f) << 8);
-      if (x >= WIDTH)
+      uint16_t x    = pb[i + 0] + ((pb[i + 1] & 0x0f) << 8);
+      uint16_t y    = (pb[i + 1] >> 4) + (pb[i + 2] << 4);
+      uint8_t  temp = pb[i];
+      bool     c    = ((temp >> 6) + ((temp >> 4) & 3) + ((temp >> 2) & 3) + (temp & 3)) >= 2;
+      if (!setPixelChecked(x, y, c))
         return false;
-      uint16_t y = (pb[i + 1] >> 4) + (pb[i + 2] << 4);
-      if (y >= HEIGHT)
-        return false;
-      uint8_t temp = pb[i];
-      bool c = ((temp >> 6) + ((temp >> 4) & 3) + ((temp >> 2) & 3) + (temp & 3)) >= 2;
-      setPixel(x, y, c);
     }
   }
   else if (pb[0] == 3) {
     uint8_t temp = pb[1];
-    bool c = ((temp >> 6) + ((temp >> 4) & 3) + ((temp >> 2) & 3) + (temp & 3)) >= 2;
+    bool    c    = ((temp >> 6) + ((temp >> 4) & 3) + ((temp >> 2) & 3) + (temp & 3)) >= 2;
     for(uint16_t i=2; i<len; i += 3) {
       uint16_t x = pb[i + 0] + ((pb[i + 1] & 0x0f) << 8);
-      if (x >= WIDTH)
-        return false;
       uint16_t y = (pb[i + 1] >> 4) + (pb[i + 2] << 4);
-      if (y >= HEIGHT)
+      if (!setPixelChecked(x, y, c))
         return false;
-      setPixel(x, y, c);
     }
   }
   else {
