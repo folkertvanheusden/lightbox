@@ -17,7 +17,7 @@ extern WiFiUDP     udpTxtPixelfloodServer;
 extern WiFiUDP     udpBinPixelfloodServer;
 extern WiFiUDP     udpAnnounceBinPixelflood;
 
-#define BS  48
+#define BS  16
 struct pf {
   WiFiClient handle;
   int        o          { 0       };
@@ -236,48 +236,62 @@ std::pair<bool, bool> processPixelfloodStreams() {
     }
 
     pfClients.push_back({ WiFiClient(newPixelfloodClient), 0 });
+    pfClients.back().buffer[BS - 1] = 0x00;
 
     activity = true;
   }
 
   // check pixelflood clients for data
   for(size_t i=0; i<pfClients.size(); i++) {
-    int nAvail = pfClients[i].handle.available();
-    if (nAvail == 0)
-      continue;
-    activity = true;
+    auto & pf_ref = pfClients[i];
+
     // read data from socket until \n is received (a complete pixelflood "packet")
-    bool fail = false;
-    for(int nr=0; nr<nAvail; nr++) {
-      // read & add to buffer unless it is still full (when full, it is invalid)
-      int c = pfClients[i].handle.read();
-      if (c == -1)
-        fail = true;
-      else if (pfClients[i].o >= BS) {  // sanity check
-#if defined(DEBUG)
-        Serial.printf("too much data %d %d\r\n", pfClients[i].o, BS);
-        Serial.println(pfClients[i].buffer);
-#endif
-        fail = true;
+    bool fin = false;
+    do {
+      unsigned nAvail = pf_ref.handle.available();
+      if (nAvail == 0)
+        break;
+      activity = true;
+
+      // anything left from a previous read? put it into the buffer first
+      // in both cases read as much as possible
+      int read_n = 0;
+      if (pf_ref.o) {
+        memcpy(work_buffer, pf_ref.buffer, pf_ref.o);
+        read_n = std::min(nAvail, sizeof(work_buffer) - 1 - pf_ref.o);
+        pf_ref.handle.read(&work_buffer[pf_ref.o], read_n);
+        read_n += pf_ref.o;
+        pf_ref.o = 0;
       }
       else {
-        pfClients[i].buffer[pfClients[i].o++] = char(c);
+        read_n = std::min(nAvail, sizeof(work_buffer) - 1);
+        pf_ref.handle.read(work_buffer, read_n);
       }
 
-      if (c == '\n') {
-        pfClients[i].buffer[BS - 1] = 0x00;
-        if (processTxtPixelflood(i))
-          drawn_anything = true;
-        else
-          fail = true;
-      }
-
-      if (fail) {
-        Serial.println(F("FAIL"));
-        pfClients[i].handle.stop();
-        break;
+      // go through the read-buffer and plot the pixels in it
+      char *work_p = p;  // p is a char-pointer to work_buffer
+      char *end_p  = &p[read_n];
+      *end_p = 0x00;
+      while(work_p < end_p) {
+        char *lf = strchr(work_p, '\n');
+        if (!lf) {
+          int bytes_left = end_p - work_p;
+          if (bytes_left > 0) {
+            memcpy(pf_ref.buffer, work_p, bytes_left);
+            pf_ref.o = bytes_left;
+          }
+	  fin = true;
+          break;
+	}
+        if (processTxtPixelfloodPixel(work_p, lf) == false) {
+	  fin = true;
+          break;
+	}
+        drawn_anything = true;
+        work_p = lf + 1;
       }
     }
+    while(fin == false);
   }
 
   // check UDP text pixelflood
