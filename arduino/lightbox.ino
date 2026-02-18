@@ -63,13 +63,14 @@ LedControl lc1 = LedControl(D1, D2, D3, NP);
 LedControl lc2 = LedControl(D1, D2, D4, NP);
 LedControl lc3 = LedControl(D1, D2, D5, NP);
 
-bool enable_pixelflood  = true;
-bool enable_mqtt_text   = true;
-bool enable_mqtt_bitmap = true;
-bool enable_multicast   = true;
-bool enable_screensaver = true;
-bool enable_ddp         = true;
-bool enable_text_anim   = true;
+bool enable_pixelflood   = true;
+bool enable_mqtt_text    = true;
+bool enable_mqtt_bitmap  = true;
+bool enable_multicast    = true;
+bool enable_screensaver  = true;
+bool enable_ddp          = true;
+bool enable_ddp_announce = true;
+bool enable_text_anim    = true;
 
 uint8_t work_buffer[4608];  // enough to fit a BMP in
 char   *p = reinterpret_cast<char *>(work_buffer);
@@ -91,17 +92,18 @@ void readSettings() {
   for(uint16_t i=0; i<EEPROM_SIZE - 1; i++)
     lrc ^= EEPROM.read(i);
   if (lrc == EEPROM.read(EEPROM_SIZE - 1)) {
-    enable_pixelflood  = EEPROM.read(0);
-    enable_mqtt_text   = EEPROM.read(1);
-    enable_mqtt_bitmap = EEPROM.read(2);
-    enable_multicast   = EEPROM.read(3);
-    enable_screensaver = EEPROM.read(4);
-    enable_ddp         = EEPROM.read(5);
+    enable_pixelflood   = EEPROM.read(0);
+    enable_mqtt_text    = EEPROM.read(1);
+    enable_mqtt_bitmap  = EEPROM.read(2);
+    enable_multicast    = EEPROM.read(3);
+    enable_screensaver  = EEPROM.read(4);
+    enable_ddp          = EEPROM.read(5);
     getEEPROM(  6, mqtt_server      , sizeof mqtt_server      );
     getEEPROM( 70, mqtt_text_topic  , sizeof mqtt_text_topic  );
     getEEPROM(134, mqtt_bitmap_topic, sizeof mqtt_bitmap_topic);
-    mqtt_port          = (EEPROM.read(198) << 8) | EEPROM.read(199);
-    enable_text_anim   = EEPROM.read(200);
+    mqtt_port           = (EEPROM.read(198) << 8) | EEPROM.read(199);
+    enable_text_anim    = EEPROM.read(200);
+    enable_ddp_announce = EEPROM.read(201);
   }
 }
 
@@ -120,9 +122,10 @@ void writeSettings() {
   putEEPROM(  6, mqtt_server,       sizeof mqtt_server      );
   putEEPROM( 70, mqtt_text_topic,   sizeof mqtt_text_topic  );
   putEEPROM(134, mqtt_bitmap_topic, sizeof mqtt_bitmap_topic);
-  EEPROM.write(198, mqtt_port >> 8);
-  EEPROM.write(199, mqtt_port     );
-  EEPROM.write(200, enable_text_anim);
+  EEPROM.write(198, mqtt_port >> 8     );
+  EEPROM.write(199, mqtt_port          );
+  EEPROM.write(200, enable_text_anim   );
+  EEPROM.write(201, enable_ddp_announce);
 
   uint8_t lrc = LRC_INIT;
   for(uint16_t i=0; i<EEPROM_SIZE - 1; i++)
@@ -391,11 +394,11 @@ void handleRoot() {
       "<body><header><h1>LightBox</h1></header><article><section><header><h2>revision</h2></header>"
       "<p><dl><dt>Built on</dt><dd><time>" __DATE__ " " __TIME__ "</time></dt></dl><dt>GIT revision:</dt><dd>" __GIT_REVISION__ "</dd></dl></p></section>"
       "<section><header><h2>screenshot</h2></header><p><img src=\"/screendump.bmp\" alt=\"screen shot\"></p></section>"
-      "<section><header><h2>toggles</h2></header><p><table><tr><th>what</th><th>state</th><tr><td><a href=\"/toggle-pixelflood\">pixelflood</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-mqtt-text\">MQTT text</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-mqtt-bitmap\">MQTT bitmap</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-multicast\">multicast</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-screensaver\">screensaver</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-ddp\">ddp</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-text-anim\">text animation</a></td><td>%s</td></tr></table></section>"
+      "<section><header><h2>toggles</h2></header><p><table><tr><th>what</th><th>state</th><tr><td><a href=\"/toggle-pixelflood\">pixelflood</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-mqtt-text\">MQTT text</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-mqtt-bitmap\">MQTT bitmap</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-multicast\">multicast</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-screensaver\">screensaver</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-ddp\">ddp</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-ddp-ann\">ddp announcements</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-text-anim\">text animation</a></td><td>%s</td></tr></table></section>"
       "<section><header><h2>MQTT settings</h2></header><p><form action=\"/set-mqtt\" enctype=\"application/x-www-form-urlencoded\" method=\"POST\"><table><tr><th>what</th><th>setting</th></tr><tr><td>server</td><td><input type=\"text\" id=\"mqtt-server\" name=\"mqtt-server\" value=\"%s\"></td></tr><tr><td>port</td><td><input type=\"text\" id=\"mqtt-port\" name=\"mqtt-port\" value=\"%d\"></td></tr><tr><td>text topic</td><td><input type=\"text\" id=\"mqtt-text-topic\" name=\"mqtt-text-topic\" value=\"%s\"></td></tr><tr><td>bitmap topic</td><td><input type=\"text\" id=\"mqtt-bitmap-topic\" name=\"mqtt-bitmap-topic\" value=\"%s\"></td></tr><tr><td>on/off notification</td><td><input type=\"text\" id=\"mqtt-on-off-topic\" name=\"mqtt-on-off-topic\" value=\"%s\"></td></tr><tr><td></td><td><input type=\"submit\"></td></tr></table></form></p></section>"
       "<section><header><h2>Miscellaneous</h2></header><p>Connected to: <b>%s</b><br>System ID: %s</p></section>"
       "<footer><header><h2>what?</h2></header><p>Designed by <a href=\"mailto:folkert@komputilo.nl\">Folkert van Heusden</a>, see <a href=\"https://komputilo.nl/texts/lightbox/\">https://komputilo.nl/texts/lightbox/</a> for more details.</p></footer></article></body></html>",
-      tstr(enable_pixelflood), tstr(enable_mqtt_text), tstr(enable_mqtt_bitmap), tstr(enable_multicast), tstr(enable_screensaver), tstr(enable_ddp), tstr(enable_text_anim),
+      tstr(enable_pixelflood), tstr(enable_mqtt_text), tstr(enable_mqtt_bitmap), tstr(enable_multicast), tstr(enable_screensaver), tstr(enable_ddp), tstr(enable_ddp_announce), tstr(enable_text_anim),
       mqtt_server, mqtt_port, mqtt_text_topic, mqtt_bitmap_topic, mqtt_on_topic,
       WiFi.SSID().c_str(), &name[4]);
 	webServer->send(200, "text/html", p);
@@ -503,6 +506,10 @@ void handleToggleScreensaver() {
 
 void handleToggleDdp() {
   toggle(&enable_ddp);
+}
+
+void handleToggleDdpAnnounce() {
+  toggle(&enable_ddp_announce);
 }
 
 void handleToggleTextAnim() {
@@ -674,6 +681,7 @@ void setup() {
   webServer->on("/toggle-multicast",   handleToggleMulticast  );
 	webServer->on("/toggle-screensaver", handleToggleScreensaver);
 	webServer->on("/toggle-ddp",         handleToggleDdp        );
+	webServer->on("/toggle-ddp-ann",     handleToggleDdpAnnounce);
 	webServer->on("/toggle-text-anim",   handleToggleTextAnim   );
 
 	webServer->on("/description.xml", HTTP_GET, []() { SSDP.schema(webServer->client()); });
@@ -800,8 +808,6 @@ std::pair<bool, bool> processDdpStream() {
   bool activity       = false;
   bool drawn_anything = false;
 
-  sendDdpAnnouncement(true, broadcast, DDP_PORT);
-
   int packetSizeDdp = udpDdp.parsePacket();
   if (packetSizeDdp) {
     int len = udpDdp.read(work_buffer, sizeof work_buffer);
@@ -883,6 +889,9 @@ void loop() {
     activity       |= rc.first;
     drawn_anything |= rc.second;
   }
+
+  if (enable_ddp_announce)
+    sendDdpAnnouncement(true, broadcast, DDP_PORT);
 
   processUdpTextStream();
 
