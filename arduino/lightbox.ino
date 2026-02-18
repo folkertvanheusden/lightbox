@@ -1101,159 +1101,141 @@ void sendBinPixelfloodAnnouncement() {
   udpAnnounceBinPixelflood.endPacket();
 }
 
-void loop() {
-	ArduinoOTA.handle();
-  if (in_ota)
-    return;
-
-	webServer->handleClient();
-
-  if (enable_mqtt_bitmap || enable_mqtt_text)
-    MQTT_connect();
-
+std::pair<bool, bool> processPixelfloodStreams() {
   bool activity       = false;
   bool drawn_anything = false;
 
-  if (enable_pixelflood) {
-    sendBinPixelfloodAnnouncement();
+  sendBinPixelfloodAnnouncement();
 
-    // pixelflood connection management
-    WiFiClient newPixelfloodClient = tcpTxtPixelfloodServer.available();
-    if (newPixelfloodClient) {
+  // pixelflood connection management
+  WiFiClient newPixelfloodClient = tcpTxtPixelfloodServer.available();
+  if (newPixelfloodClient) {
 #if defined(DEBUG)
-      Serial.println(F("new TCP client"));
+    Serial.println(F("new TCP client"));
 #endif
-      // check if all still there
-      for(size_t i=0; i<pfClients.size();) {
-        if (pfClients.at(i).handle.connected() == false) {
-          pfClients.erase(pfClients.begin() + i);
-        }
-        else {
-          i++;
-        }
+    // check if all still there
+    for(size_t i=0; i<pfClients.size();) {
+      if (pfClients.at(i).handle.connected() == false) {
+        pfClients.erase(pfClients.begin() + i);
       }
-      // max 32 clients
-      while(pfClients.size() > 32) {
-        pfClients.erase(pfClients.begin());
-        Serial.println(F("CLOSE SESSION"));
-      }
-
-      pfClients.push_back({ WiFiClient(newPixelfloodClient), 0 });
-
-      activity = true;
-    }
-
-    // check pixelflood clients for data
-    for(size_t i=0; i<pfClients.size(); i++) {
-      int nAvail = pfClients[i].handle.available();
-      if (nAvail == 0)
-        continue;
-      activity = true;
-      // read data from socket until \n is received (a complete pixelflood "packet")
-      bool fail = false;
-      for(int nr=0; nr<nAvail; nr++) {
-        // read & add to buffer unless it is still full (when full, it is invalid)
-        int c = pfClients[i].handle.read();
-        if (c == -1)
-          fail = true;
-        else if (pfClients[i].o >= BS) {  // sanity check
-#if defined(DEBUG)
-          Serial.printf("too much data %d %d\r\n", pfClients[i].o, BS);
-          Serial.println(pfClients[i].buffer);
-#endif
-          fail = true;
-        }
-        else {
-          pfClients[i].buffer[pfClients[i].o++] = char(c);
-        }
-
-        if (c == '\n') {
-          pfClients[i].buffer[BS - 1] = 0x00;
-          if (processTxtPixelflood(i))
-            drawn_anything = true;
-          else
-            fail = true;
-        }
-
-        if (fail) {
-          Serial.println(F("FAIL"));
-          pfClients[i].handle.stop();
-          break;
-        }
-      }
-    }
-
-    // check UDP text pixelflood
-    int packetSizeTxt = udpTxtPixelfloodServer.parsePacket();
-    if (packetSizeTxt) {
-      int len = udpTxtPixelfloodServer.read(work_buffer, sizeof(work_buffer) - 1);
-#if defined(DEBUG)
-      Serial.printf("UDPTXT: %d, %s\r\n", len, p);
-#endif
-      work_buffer[len] = 0x00;
-      char *work_p = p;  // p is a char-pointer to work_buffer
-      for(;;) {
-        char *lf = strchr(work_p, '\n');
-        if (!lf)
-          break;
-        if (processTxtPixelfloodPixel(work_p, lf) == false)
-          break;
-        work_p = lf + 1;
-      }
-
-      drawn_anything = true;
-      activity       = true;
-    }
-
-    // check UDP bin pixelflood
-    int packetSizeBin = udpBinPixelfloodServer.parsePacket();
-    if (packetSizeBin) {
-      uint16_t len = udpBinPixelfloodServer.read(work_buffer, sizeof work_buffer);
-#if defined(DEBUG)
-      Serial.printf("UDPBIN: %d\r\n", len);
-#endif
-      if (processBinPixelflood(len)) {
-        drawn_anything = true;
-        activity       = true;
-      }
-    }
-  }
-
-	static uint32_t prev         = 0;
-	static int      mode         = 0;
-	uint32_t        now          = millis();
-  if (enable_multicast) {
-    int packetSizeMC = udpMC.parsePacket();
-    if (packetSizeMC) {
-#if defined(DEBUG)
-      Serial.printf("UDPMC: %d\r\n", packetSizeMC);
-#endif
-      int len = udpMC.read(work_buffer, sizeof work_buffer);
-      lzjbDecompress(work_buffer, data, len, 192);
-      drawn_anything = true;
-      activity       = true;
-    }
-  }
-
-  if (enable_ddp) {
-    sendDdpAnnouncement(true, broadcast, DDP_PORT);
-
-    int packetSizeDdp = udpDdp.parsePacket();
-    if (packetSizeDdp) {
-      int len = udpDdp.read(work_buffer, sizeof work_buffer);
-#if defined(DEBUG)
-      Serial.printf("UDPDDP: %d\r\n", len);
-#endif
-      if (work_buffer[3] == 251 && (work_buffer[0] & 2))
-        sendDdpAnnouncement(false, udpDdp.remoteIP(), udpDdp.remotePort());
       else {
-        handleDdpData(work_buffer, len);
-        drawn_anything = true;
-        activity       = true;
+        i++;
+      }
+    }
+    // max 32 clients
+    while(pfClients.size() > 32) {
+      pfClients.erase(pfClients.begin());
+      Serial.println(F("CLOSE SESSION"));
+    }
+
+    pfClients.push_back({ WiFiClient(newPixelfloodClient), 0 });
+
+    activity = true;
+  }
+
+  // check pixelflood clients for data
+  for(size_t i=0; i<pfClients.size(); i++) {
+    int nAvail = pfClients[i].handle.available();
+    if (nAvail == 0)
+      continue;
+    activity = true;
+    // read data from socket until \n is received (a complete pixelflood "packet")
+    bool fail = false;
+    for(int nr=0; nr<nAvail; nr++) {
+      // read & add to buffer unless it is still full (when full, it is invalid)
+      int c = pfClients[i].handle.read();
+      if (c == -1)
+        fail = true;
+      else if (pfClients[i].o >= BS) {  // sanity check
+#if defined(DEBUG)
+        Serial.printf("too much data %d %d\r\n", pfClients[i].o, BS);
+        Serial.println(pfClients[i].buffer);
+#endif
+        fail = true;
+      }
+      else {
+        pfClients[i].buffer[pfClients[i].o++] = char(c);
+      }
+
+      if (c == '\n') {
+        pfClients[i].buffer[BS - 1] = 0x00;
+        if (processTxtPixelflood(i))
+          drawn_anything = true;
+        else
+          fail = true;
+      }
+
+      if (fail) {
+        Serial.println(F("FAIL"));
+        pfClients[i].handle.stop();
+        break;
       }
     }
   }
 
+  // check UDP text pixelflood
+  int packetSizeTxt = udpTxtPixelfloodServer.parsePacket();
+  if (packetSizeTxt) {
+    int len = udpTxtPixelfloodServer.read(work_buffer, sizeof(work_buffer) - 1);
+#if defined(DEBUG)
+    Serial.printf("UDPTXT: %d, %s\r\n", len, p);
+#endif
+    work_buffer[len] = 0x00;
+    char *work_p = p;  // p is a char-pointer to work_buffer
+    for(;;) {
+      char *lf = strchr(work_p, '\n');
+      if (!lf)
+        break;
+      if (processTxtPixelfloodPixel(work_p, lf) == false)
+        break;
+      work_p = lf + 1;
+    }
+
+    drawn_anything = true;
+    activity       = true;
+  }
+
+  // check UDP bin pixelflood
+  int packetSizeBin = udpBinPixelfloodServer.parsePacket();
+  if (packetSizeBin) {
+    uint16_t len = udpBinPixelfloodServer.read(work_buffer, sizeof work_buffer);
+#if defined(DEBUG)
+    Serial.printf("UDPBIN: %d\r\n", len);
+#endif
+    if (processBinPixelflood(len)) {
+      drawn_anything = true;
+      activity       = true;
+    }
+  }
+
+  return { activity, drawn_anything };
+}
+
+std::pair<bool, bool> processDdpStream() {
+  bool activity       = false;
+  bool drawn_anything = false;
+
+  sendDdpAnnouncement(true, broadcast, DDP_PORT);
+
+  int packetSizeDdp = udpDdp.parsePacket();
+  if (packetSizeDdp) {
+    int len = udpDdp.read(work_buffer, sizeof work_buffer);
+#if defined(DEBUG)
+    Serial.printf("UDPDDP: %d\r\n", len);
+#endif
+    if (work_buffer[3] == 251 && (work_buffer[0] & 2))
+      sendDdpAnnouncement(false, udpDdp.remoteIP(), udpDdp.remotePort());
+    else {
+      handleDdpData(work_buffer, len);
+      drawn_anything = true;
+      activity       = true;
+    }
+  }
+
+  return { activity, drawn_anything };
+}
+
+void processUdpTextStream() {
   int packetSizeText = udpText.parsePacket();
   if (packetSizeText) {
     int len = udpText.read(work_buffer, 9 * 3 + 1);
@@ -1274,6 +1256,50 @@ void loop() {
       p_work = lf + 1;
     }
   }
+}
+
+void loop() {
+	ArduinoOTA.handle();
+  if (in_ota)
+    return;
+
+	webServer->handleClient();
+
+  if (enable_mqtt_bitmap || enable_mqtt_text)
+    MQTT_connect();
+
+  bool activity       = false;
+  bool drawn_anything = false;
+
+  if (enable_pixelflood) {
+    auto rc = processPixelfloodStreams();
+    activity       |= rc.first;
+    drawn_anything |= rc.second;
+  }
+
+	static uint32_t prev         = 0;
+	static int      mode         = 0;
+	uint32_t        now          = millis();
+  if (enable_multicast) {
+    int packetSizeMC = udpMC.parsePacket();
+    if (packetSizeMC) {
+#if defined(DEBUG)
+      Serial.printf("UDPMC: %d\r\n", packetSizeMC);
+#endif
+      int len = udpMC.read(work_buffer, sizeof work_buffer);
+      lzjbDecompress(work_buffer, data, len, 192);
+      drawn_anything = true;
+      activity       = true;
+    }
+  }
+
+  if (enable_ddp) {
+    auto rc = processDdpStream();
+    activity       |= rc.first;
+    drawn_anything |= rc.second;
+  }
+
+  processUdpTextStream();
 
   if (activity) {
     mode = 0;
