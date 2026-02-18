@@ -1,3 +1,5 @@
+// (C) 2019-2026 by Folkert van Heusden <folkert@komputilo.nl>
+
 #include <Arduino.h>
 #include <cstdint>
 #include <ESP8266WiFi.h>

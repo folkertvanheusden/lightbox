@@ -1,3 +1,3 @@
 // (C) 2019-2026 by Folkert van Heusden <folkert@komputilo.nl>
 
-std::pair<bool, bool> processPixelfloodStreams();
+void animate(int mode);
