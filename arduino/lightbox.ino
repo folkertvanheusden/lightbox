@@ -565,7 +565,7 @@ void sendDdpAnnouncement(const bool is_announncement, const IPAddress & ip, cons
 
 	work_buffer[0] = 64 | (is_announncement ? 0 : 4) | 1;  // version_1, reply, push
 	work_buffer[3] = 251;  // json status
-  int msg_len = snprintf(&p[10], sizeof work_buffer - 10, "{\"status\" { \"man\": \"www.komputilo.nl\", \"mod\": \"Lightbox DDP server\", \"ver\": \"0.1\" } }");
+  int msg_len = snprintf(&p[10], sizeof work_buffer - 10, "{\"status\": { \"man\": \"www.komputilo.nl\", \"mod\": \"Lightbox DDP server\", \"ver\": \"0.1\" } }");
 	work_buffer[8] = msg_len >> 8;
 	work_buffer[9] = msg_len;
 
