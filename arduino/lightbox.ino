@@ -293,6 +293,7 @@ void enableOTA() {
         cls();
         text("OTA upd",  true);
         text("finished", true);
+        text("wait...",  true);
 			});
 	ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
         Serial.printf("OTA progress: %u%%\r", progress * 100 / total);
