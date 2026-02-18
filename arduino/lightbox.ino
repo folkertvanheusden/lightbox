@@ -784,7 +784,7 @@ void callback(const char topic[], byte *payload, unsigned int len) {
 
 bool setPixelChecked(const unsigned x, const unsigned y, const bool c) {
 #if defined(DEBUG)
-  Serial.printf("%d,%d:%d\r\n", x, y, c);
+  Serial.printf_P(F("%d,%d:%d\r\n"), x, y, c);
 #endif
   if (x >= WIDTH || y >= HEIGHT) {
 #if defined(DEBUG)
@@ -806,7 +806,7 @@ std::pair<bool, bool> processDdpStream() {
   if (packetSizeDdp) {
     int len = udpDdp.read(work_buffer, sizeof work_buffer);
 #if defined(DEBUG)
-    Serial.printf("UDPDDP: %d\r\n", len);
+    Serial.printf_P(F("UDPDDP: %d\r\n"), len);
 #endif
     if (work_buffer[3] == 251 && (work_buffer[0] & 2))
       sendDdpAnnouncement(false, udpDdp.remoteIP(), udpDdp.remotePort());
@@ -827,7 +827,7 @@ void processUdpTextStream() {
     if (len >= 0)
       work_buffer[len] = 0x00;
 #if defined(DEBUG)
-      Serial.printf("UDPTEXT: %d, %s\r\n", len, p);
+      Serial.printf_P(F("UDPTEXT: %d, %s\r\n"), len, p);
 #endif
 
     char *p_work = p;
@@ -869,7 +869,7 @@ void loop() {
     int packetSizeMC = udpMC.parsePacket();
     if (packetSizeMC) {
 #if defined(DEBUG)
-      Serial.printf("UDPMC: %d\r\n", packetSizeMC);
+      Serial.printf_P(F("UDPMC: %d\r\n"), packetSizeMC);
 #endif
       int len = udpMC.read(work_buffer, sizeof work_buffer);
       lzjbDecompress(work_buffer, data, len, 192);

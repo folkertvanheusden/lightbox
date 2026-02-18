@@ -299,7 +299,7 @@ std::pair<bool, bool> processPixelfloodStreams() {
   if (packetSizeTxt) {
     int len = udpTxtPixelfloodServer.read(work_buffer, sizeof(work_buffer) - 1);
 #if defined(DEBUG)
-    Serial.printf("UDPTXT: %d, %s\r\n", len, p);
+    Serial.printf_P(F("UDPTXT: %d, %s\r\n"), len, p);
 #endif
     work_buffer[len] = 0x00;
     char *work_p = p;  // p is a char-pointer to work_buffer
@@ -321,7 +321,7 @@ std::pair<bool, bool> processPixelfloodStreams() {
   if (packetSizeBin) {
     uint16_t len = udpBinPixelfloodServer.read(work_buffer, sizeof work_buffer);
 #if defined(DEBUG)
-    Serial.printf("UDPBIN: %d\r\n", len);
+    Serial.printf_P(F("UDPBIN: %d\r\n"), len);
 #endif
     if (processBinPixelflood(len)) {
       drawn_anything = true;
