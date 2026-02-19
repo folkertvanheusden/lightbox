@@ -439,7 +439,7 @@ void drawSparkline(const float *const from_what, const int n) {
   float extent = max_ - min_;
   if (extent) {
     int py = -1;
-    for(int i=0; i<N_FPS; i++) {
+    for(int i=0; i<n; i++) {
       int y = (from_what[i] - min_) * 23.9 / extent;
       uint8_t mask = 1 << (7 - (i & 7));
       uint8_t cell = i >> 3;
@@ -878,6 +878,7 @@ void callback(const char topic[], byte *payload, unsigned int len) {
   else {
     if (enable_mqtt_bitmap) {
       lzjbDecompress(payload, data, len, 192);
+      n_pixels_drawn += WIDTH * HEIGHT;
       putScreen();
     }
   }
@@ -972,8 +973,10 @@ void loop() {
 #endif
       int len = udpMC.read(work_buffer, sizeof work_buffer);
       lzjbDecompress(work_buffer, data, len, 192);
+      n_pixels_drawn += WIDTH * HEIGHT;
       drawn_anything = true;
       activity       = true;
+
     }
   }
 
