@@ -80,6 +80,7 @@ float fps[N_FPS] { };
 #define  N_PPS 65
 float pps[N_PPS] { };
 uint32_t n_pixels_drawn = 0;
+uint32_t errors         = 0;
 
 void putScreen() {
     ledupdate(lc1, &data[0]);
@@ -479,11 +480,11 @@ void handleRoot() {
       "<section><header><h2>screenshot</h2></header><p><img src=\"/screendump.bmp\" alt=\"screen shot\" border=\"1\"></p></section>"
       "<section><header><h2>toggles</h2></header><p><table><tr><th>what</th><th>state</th><tr><td><a href=\"/toggle-pixelflood\">pixelflood</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-mqtt-text\">MQTT text</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-mqtt-bitmap\">MQTT bitmap</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-multicast\">multicast</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-screensaver\">screensaver</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-ddp\">ddp</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-ddp-ann\">ddp announcements</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-text-anim\">text animation</a></td><td>%s</td></tr></table></section>"
       "<section><header><h2>MQTT settings</h2></header><p><form action=\"/set-mqtt\" enctype=\"application/x-www-form-urlencoded\" method=\"POST\"><table><tr><th>what</th><th>setting</th></tr><tr><td>server</td><td><input type=\"text\" id=\"mqtt-server\" name=\"mqtt-server\" value=\"%s\"></td></tr><tr><td>port</td><td><input type=\"text\" id=\"mqtt-port\" name=\"mqtt-port\" value=\"%d\"></td></tr><tr><td>text topic</td><td><input type=\"text\" id=\"mqtt-text-topic\" name=\"mqtt-text-topic\" value=\"%s\"></td></tr><tr><td>bitmap topic</td><td><input type=\"text\" id=\"mqtt-bitmap-topic\" name=\"mqtt-bitmap-topic\" value=\"%s\"></td></tr><tr><td>on/off notification</td><td><input type=\"text\" id=\"mqtt-on-off-topic\" name=\"mqtt-on-off-topic\" value=\"%s\"></td></tr><tr><td></td><td><input type=\"submit\"></td></tr></table></form></p></section>"
-      "<section><header><h2>Miscellaneous</h2></header><p>Connected to: <b>%s</b><br>System ID: %s<br><table><tr><th>what</th><th>stats</th><th>sparkline</th></tr><tr><td>fps:</td><td>%.2f (min: %.2f, avg: %.2f, median: %.2f, max: %.2f)</td><td><img src=\"/sparkline-fps.bmp\" alt=\"sparkline showing fps over time\" border=\"1\"></td></tr><tr><td>pps:</td><td>%.2f (min: %.2f, avg: %.2f, median: %.2f, max: %.2f)</td><td><img src=\"/sparkline-pps.bmp\" alt=\"sparkline showing pps over time\" border=\"1\"></td></tr></table></p></section>"
+      "<section><header><h2>Miscellaneous</h2></header><p>Connected to: <b>%s</b><br>System ID: %s<br><table><tr><th>what</th><th>stats</th><th>sparkline</th></tr><tr><td>fps:</td><td>%.2f (min: %.2f, avg: %.2f, median: %.2f, max: %.2f)</td><td><img src=\"/sparkline-fps.bmp\" alt=\"sparkline showing fps over time\" border=\"1\"></td></tr><tr><td>pps:</td><td>%.2f (min: %.2f, avg: %.2f, median: %.2f, max: %.2f)</td><td><img src=\"/sparkline-pps.bmp\" alt=\"sparkline showing pps over time\" border=\"1\"></td></tr></table><br>errors: %u</p></section>"
       "<footer><header><h2>what?</h2></header><p>Designed by <a href=\"mailto:folkert@komputilo.nl\">Folkert van Heusden</a>, see <a href=\"https://komputilo.nl/texts/lightbox/\">https://komputilo.nl/texts/lightbox/</a> for more details.</p></footer></article></body></html>",
       tstr(enable_pixelflood), tstr(enable_mqtt_text), tstr(enable_mqtt_bitmap), tstr(enable_multicast), tstr(enable_screensaver), tstr(enable_ddp), tstr(enable_ddp_announce), tstr(enable_text_anim),
       mqtt_server, mqtt_port, mqtt_text_topic, mqtt_bitmap_topic, mqtt_on_topic,
-      WiFi.SSID().c_str(), &name[4], fps[N_FPS - 1], double(fmin_), double(favg), double(fmedian), double(fmax_), pps[N_PPS - 1], double(pmin_), double(pavg), double(pmedian), double(pmax_));
+      WiFi.SSID().c_str(), &name[4], fps[N_FPS - 1], double(fmin_), double(favg), double(fmedian), double(fmax_), pps[N_PPS - 1], double(pmin_), double(pavg), double(pmedian), double(pmax_), errors);
   setNoCacheHeaders();
 	webServer->send(200, "text/html", p);
 }
@@ -703,13 +704,11 @@ void handleDdpData(const uint8_t *const buffer, const size_t n) {
 	for(size_t i=packet_start_index; i<std::min(size_t(packet_start_index + length), n); i += pixel_mul) {
 		unsigned offset_offseted = offset + i - packet_start_index;
 		int y = offset_offseted / (WIDTH * pixel_mul);
-		if (y < HEIGHT) {
-			int x = (offset_offseted / pixel_mul) % WIDTH;
-      if (pixel_mul == 3)
-        setPixel(x, y, buffer[i + 0] + buffer[i + 1] + buffer[i + 2] >= 128 * 3);
-      else
-        setPixel(x, y, buffer[i + 0] >= 128);
-		}
+		int x = (offset_offseted / pixel_mul) % WIDTH;
+    if (pixel_mul == 3)
+      setPixelChecked(x, y, buffer[i + 0] + buffer[i + 1] + buffer[i + 2] >= 128 * 3);
+    else
+      setPixelChecked(x, y, buffer[i + 0] >= 128);
 	}
 }
 
@@ -896,6 +895,7 @@ bool setPixelChecked(const unsigned x, const unsigned y, const bool c) {
 #if defined(DEBUG)
     Serial.println(F("X/Y out or range"));
 #endif
+    errors++;
     return false;
   }
   setPixel(x, y, c);
