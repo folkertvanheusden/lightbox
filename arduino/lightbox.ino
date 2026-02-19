@@ -162,11 +162,13 @@ bool MQTT_subscribe(const char topic[]) {
 
 IRAM_ATTR void setPixel(const int x, const int y, const bool c)
 {
-  uint16_t base = (y >> 3) * WIDTH;
-  uint16_t o    = base + ((x >> 3) << 3) + 7 - (y & 7);
-  uint8_t  bit  = c << (x & 7);
-  uint8_t *pp   = &data[o];
-  *pp = (*pp & ~bit) | bit;
+  uint16_t base  = (y >> 3) * WIDTH;
+  uint16_t o     = base + ((x >> 3) << 3) + 7 - (y & 7);
+  uint8_t  xo    = x & 7;
+  uint8_t  unset = ~(1 << xo);
+  uint8_t  set   = c << xo;
+  uint8_t *pp    = &data[o];
+  *pp = (*pp & unset) | set;
   n_pixels_drawn++;
 }
 
