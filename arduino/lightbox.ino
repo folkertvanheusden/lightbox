@@ -699,16 +699,17 @@ void handleDdpData(const uint8_t *const buffer, const size_t n) {
 	uint32_t offset = (buffer[4] << 24) | (buffer[5] << 16) | (buffer[6] << 8) | buffer[7];
 	uint16_t length = (buffer[8] << 8) | buffer[9];
 
-	int packet_start_index = has_timecode   ? 14 : 10;
-  int pixel_mul          = data_type == 1 ?  3 :  1;
-	for(size_t i=packet_start_index; i<std::min(size_t(packet_start_index + length), n); i += pixel_mul) {
+	int  packet_start_index = has_timecode   ? 14 : 10;
+  int  pixel_mul          = data_type == 1 ?  3 :  1;
+  bool rc                 = false;
+	for(size_t i=packet_start_index; i<std::min(size_t(packet_start_index + length), n) && rc == false; i += pixel_mul) {
 		unsigned offset_offseted = offset + i - packet_start_index;
 		int y = offset_offseted / (WIDTH * pixel_mul);
 		int x = (offset_offseted / pixel_mul) % WIDTH;
     if (pixel_mul == 3)
-      setPixelChecked(x, y, buffer[i + 0] + buffer[i + 1] + buffer[i + 2] >= 128 * 3);
+      rc = setPixelChecked(x, y, buffer[i + 0] + buffer[i + 1] + buffer[i + 2] >= 128 * 3);
     else
-      setPixelChecked(x, y, buffer[i + 0] >= 128);
+      rc = setPixelChecked(x, y, buffer[i + 0] >= 128);
 	}
 }
 
