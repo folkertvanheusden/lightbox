@@ -813,7 +813,11 @@ void setup() {
   restartMqtt(false);
 	mqttclient.setCallback(callback);
 
+#if defined(DEBUG)
+  text("DEBUG!");
+#else
   text("Hello");
+#endif
   snprintf(p, sizeof work_buffer, "%d.%d", ip[0], ip[1]);
   text(p);
   snprintf(p, sizeof work_buffer, ".%d.%d", ip[2], ip[3]);
