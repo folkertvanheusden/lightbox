@@ -32,6 +32,7 @@ bool processTxtPixelfloodPixel(const char *const buf, const char *const buf_end)
   if (buf[0] != 'P' || buf[1] != 'X' || buf[2] != ' ') {
 #if defined(DEBUG)
     Serial.println(F("No PX header"));
+    Serial.println(buf);
 #endif
     return false;
   }
@@ -84,53 +85,13 @@ bool processTxtPixelfloodPixel(const char *const buf, const char *const buf_end)
     b = n3 - '0';
 
   bool c = (r + g + b) >= 8 * 3;
-  return setPixelChecked(x, y, c);
-}
-
-bool processTxtPixelflood(size_t nr) {
-  for(;;) {
-    char *buf = pfClients.at(nr).buffer;
-    char *lf  = strchr(buf, '\n');
-    if (lf == nullptr)
-      return true;
-    *lf = 0x00;
-
-    if (strcmp(buf, "SIZE") == 0) {
-      char buffer[16];
-      snprintf(buffer, sizeof buffer, "SIZE %d %d\n", WIDTH, HEIGHT);
-      pfClients.at(nr).handle.print(buffer);
+  if (!setPixelChecked(x, y, c)) {
 #if defined(DEBUG)
-      Serial.println(F("SIZE request"));
+    Serial.printf_P("coordinate: %d,%d\r\n", x, y);
 #endif
-    }
-    else if (lf - buf < 13) {
-#if defined(DEBUG)
-      Serial.println(F("PX request too small"));
-#endif
-      return false;
-    }
-    else if (!processTxtPixelfloodPixel(buf, lf)) {
-#if defined(DEBUG)
-      Serial.println(F("processTxtPixelfloodPixel failed"));
-#endif
-      return false;
-    }
-
-    int was_length = lf - pfClients[nr].buffer + 1;
-    int bytes_left = pfClients[nr].o - was_length;
-    if (bytes_left < 0) {  // internal error
-#if defined(DEBUG)
-      Serial.println(F("processTxtPixelflood internal error"));
-#endif
-      return false;
-    }
-
-    if (bytes_left > 0)
-      memmove(&pfClients[nr].buffer[0], lf + 1, bytes_left);
-    pfClients[nr].o -= was_length;
+    return false;
   }
-
-  return false;
+  return true;
 }
 
 // https://github.com/JanKlopper/pixelvloed/blob/master/protocol.md
@@ -248,8 +209,8 @@ std::pair<bool, bool> processPixelfloodStreams() {
     // read data from socket until \n is received (a complete pixelflood "packet")
     bool fin = false;
     do {
-      unsigned nAvail = pf_ref.handle.available();
-      if (nAvail == 0)
+      unsigned n_available = pf_ref.handle.available();
+      if (n_available == 0)
         break;
       activity = true;
 
@@ -258,14 +219,20 @@ std::pair<bool, bool> processPixelfloodStreams() {
       int read_n = 0;
       if (pf_ref.o) {
         memcpy(work_buffer, pf_ref.buffer, pf_ref.o);
-        read_n = std::min(nAvail, sizeof(work_buffer) - 1 - pf_ref.o);
+        read_n = std::min(n_available, sizeof(work_buffer) - 1 - pf_ref.o);
+#if defined(DEBUG)
+        Serial.printf_P("use %d old data and %d new data, %d available\r\n", pf_ref.o, read_n, n_available);
+#endif
         pf_ref.handle.read(&work_buffer[pf_ref.o], read_n);
         read_n += pf_ref.o;
         pf_ref.o = 0;
       }
       else {
-        read_n = std::min(nAvail, sizeof(work_buffer) - 1);
+        read_n = std::min(n_available, sizeof(work_buffer) - 1);
         pf_ref.handle.read(work_buffer, read_n);
+#if defined(DEBUG)
+        Serial.printf_P("%d new data, %d available\r\n", read_n, n_available);
+#endif
       }
 
       // go through the read-buffer and plot the pixels in it
@@ -276,14 +243,27 @@ std::pair<bool, bool> processPixelfloodStreams() {
         char *lf = strchr(work_p, '\n');
         if (!lf) {
           int bytes_left = end_p - work_p;
-          if (bytes_left > 0) {
+	  if (bytes_left > 0 && bytes_left < BS) {
             memcpy(pf_ref.buffer, work_p, bytes_left);
             pf_ref.o = bytes_left;
           }
+	  else if (bytes_left != 0) {
+            pf_ref.handle.stop();
+	  }
 	  fin = true;
           break;
 	}
-        if (processTxtPixelfloodPixel(work_p, lf) == false) {
+
+        if (strncmp(work_p, "SIZE", 4) == 0) {
+          char buffer[16];
+          snprintf(buffer, sizeof buffer, "SIZE %d %d\n", WIDTH, HEIGHT);
+          pf_ref.handle.print(buffer);
+#if defined(DEBUG)
+          Serial.println(F("SIZE request"));
+#endif
+        }
+	else if (processTxtPixelfloodPixel(work_p, lf) == false) {
+          pf_ref.handle.stop();
 	  fin = true;
           break;
 	}
@@ -298,10 +278,10 @@ std::pair<bool, bool> processPixelfloodStreams() {
   int packetSizeTxt = udpTxtPixelfloodServer.parsePacket();
   if (packetSizeTxt) {
     int len = udpTxtPixelfloodServer.read(work_buffer, sizeof(work_buffer) - 1);
-#if defined(DEBUG)
-    Serial.printf_P(F("UDPTXT: %d, %s\r\n"), len, p);
-#endif
     work_buffer[len] = 0x00;
+#if defined(DEBUG)
+    Serial.printf_P("UDPTXT: %d, %s\r\n", len, p);
+#endif
     char *work_p = p;  // p is a char-pointer to work_buffer
     for(;;) {
       char *lf = strchr(work_p, '\n');
@@ -311,6 +291,9 @@ std::pair<bool, bool> processPixelfloodStreams() {
         break;
       work_p = lf + 1;
     }
+#if defined(DEBUG)
+    Serial.println(F("---"));
+#endif
 
     drawn_anything = true;
     activity       = true;
@@ -321,7 +304,7 @@ std::pair<bool, bool> processPixelfloodStreams() {
   if (packetSizeBin) {
     uint16_t len = udpBinPixelfloodServer.read(work_buffer, sizeof work_buffer);
 #if defined(DEBUG)
-    Serial.printf_P(F("UDPBIN: %d\r\n"), len);
+    Serial.printf_P("UDPBIN: %d\r\n", len);
 #endif
     if (processBinPixelflood(len)) {
       drawn_anything = true;
