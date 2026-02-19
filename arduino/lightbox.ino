@@ -324,6 +324,12 @@ const char *tstr(bool state) {
   return state ? "ON" : "OFF";
 }
 
+void setNoCacheHeaders() {
+  webServer->sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  webServer->sendHeader("Pragma", "no-cache");
+  webServer->sendHeader("Expires", "-1");
+}
+
 void handleScreendump() {
 #define BMP_HEADER_SIZE 54
   memset(work_buffer, 0x00, BMP_HEADER_SIZE);
@@ -382,6 +388,7 @@ void handleScreendump() {
     }
   }
 
+  setNoCacheHeaders();
 	webServer->send(200, "image/bmp", work_buffer, header1->bfSize);
 }
 
@@ -401,16 +408,19 @@ void handleRoot() {
       tstr(enable_pixelflood), tstr(enable_mqtt_text), tstr(enable_mqtt_bitmap), tstr(enable_multicast), tstr(enable_screensaver), tstr(enable_ddp), tstr(enable_ddp_announce), tstr(enable_text_anim),
       mqtt_server, mqtt_port, mqtt_text_topic, mqtt_bitmap_topic, mqtt_on_topic,
       WiFi.SSID().c_str(), &name[4]);
+  setNoCacheHeaders();
 	webServer->send(200, "text/html", p);
 }
 
 void handleNotFound() {
   webServer->sendHeader("Location", "/", true);
+  setNoCacheHeaders();
   webServer->send(302, "text/plane", "Page does not exist");
 }
 
-void restartMqtt() {
-  mqttclient.disconnect();
+void restartMqtt(bool disconnect) {
+  if (disconnect)
+    mqttclient.disconnect();
 	mqttclient.setServer(mqtt_server, mqtt_port);
 }
 
@@ -448,32 +458,37 @@ void handleSetMqtt() {
   else
     fail = true;
 
+  setNoCacheHeaders();
   if (fail)
     webServer->send(200, "text/html", "<html><head><meta http-equiv=\"refresh\" content=\"2; URL=/\" /></head><body>invalid parameters</body></html>");
   else {
     webServer->send(200, "text/html", "<html><head><meta http-equiv=\"refresh\" content=\"1; URL=/\" /></head><body>done</body></html>");
     writeSettings();
 
-    restartMqtt();
+    restartMqtt(true);
   }
 }
 
 void handleResetWiFi() {
   wifiManager.resetSettings();
   ESP.eraseConfig();
+  setNoCacheHeaders();
 	webServer->send(200, "text/css", F("Reset OK"));
   reboot();
 }
 
 void handleSimpleCSS() {
+  setNoCacheHeaders();
 	webServer->send(200, "text/css", simple_css, simple_css_len);
 }
 
 void handleFavicon() {
+  setNoCacheHeaders();
 	webServer->send(200, "image/x-icon", favicon_ico, favicon_ico_len);
 }
 
 void sendTogglesPage() {
+  setNoCacheHeaders();
 	webServer->send(200, "text/html", "<html><head><meta http-equiv=\"refresh\" content=\"1; URL=/\" /></head><body>done</body></html>");
 }
 
@@ -717,7 +732,7 @@ void setup() {
 	data[0] = 0;
   putScreen();
 
-  restartMqtt();
+  restartMqtt(false);
 	mqttclient.setCallback(callback);
 
   text("Hello");
