@@ -503,6 +503,17 @@ void restartMqtt(bool disconnect) {
 	mqttclient.setServer(mqtt_server, mqtt_port);
 }
 
+void sendDone(const char *const msg) {
+  snprintf(p, sizeof work_buffer,
+      "<!DOCTYPE html><html lang=\"en\">"
+      "<head><title>komputilo.nl</title>"
+      "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+      "<meta http-equiv=\"refresh\" content=\"1; URL=/\" />"
+      "<link href=\"/simple.css\" rel=\"stylesheet\" type=\"text/css\"></head>"
+      "<body><header><h1>LightBox</h1></header><article><section><header><h2>result</h2><p>%s</p></header></section></artitle></body></html>", msg);
+  webServer->send(200, "text/html", p);
+}
+
 void handleSetMqtt() {
   bool   fail = false;
   String temp;
@@ -541,7 +552,7 @@ void handleSetMqtt() {
   if (fail)
     webServer->send(200, "text/html", "<html><head><meta http-equiv=\"refresh\" content=\"2; URL=/\" /></head><body>invalid parameters</body></html>");
   else {
-    webServer->send(200, "text/html", "<html><head><meta http-equiv=\"refresh\" content=\"1; URL=/\" /></head><body>done</body></html>");
+    sendDone("OK");
     writeSettings();
 
     restartMqtt(true);
@@ -552,7 +563,7 @@ void handleResetWiFi() {
   wifiManager.resetSettings();
   ESP.eraseConfig();
   setNoCacheHeaders();
-	webServer->send(200, "text/css", F("Reset OK"));
+  sendDone("Reset OK");
   reboot();
 }
 
@@ -568,7 +579,7 @@ void handleFavicon() {
 
 void sendTogglesPage() {
   setNoCacheHeaders();
-	webServer->send(200, "text/html", "<html><head><meta http-equiv=\"refresh\" content=\"1; URL=/\" /></head><body>done</body></html>");
+  sendDone("OK");
 }
 
 void toggle(bool *const flag) {
