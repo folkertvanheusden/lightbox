@@ -54,7 +54,7 @@ WiFiManager wifiManager;
 #include <ESP8266HTTPUpdateServer.h>
 ESP8266HTTPUpdateServer httpUpdater;
 
-ESP8266WebServer *webServer { nullptr };
+ESP8266WebServer *web_server { nullptr };
 
 #define NP 8
 /* int dataPin, int clkPin, int csPin, int NP */
@@ -334,9 +334,9 @@ const char *tstr(bool state) {
 }
 
 void setNoCacheHeaders() {
-  webServer->sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-  webServer->sendHeader("Pragma", "no-cache");
-  webServer->sendHeader("Expires", "-1");
+  web_server->sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  web_server->sendHeader("Pragma", "no-cache");
+  web_server->sendHeader("Expires", "-1");
 }
 
 void sendBmp(std::function<bool(const int x, const int y)> fGetPixel) {
@@ -398,7 +398,7 @@ void sendBmp(std::function<bool(const int x, const int y)> fGetPixel) {
   }
 
   setNoCacheHeaders();
-	webServer->send(200, "image/bmp", work_buffer, header1->bfSize);
+	web_server->send(200, "image/bmp", work_buffer, header1->bfSize);
 }
 
 void handleScreendump() {
@@ -488,13 +488,13 @@ void handleRoot() {
       mqtt_server, mqtt_port, mqtt_text_topic, mqtt_bitmap_topic, mqtt_on_topic,
       WiFi.SSID().c_str(), &name[4], fps[N_FPS - 1], double(fmin_), double(favg), double(fmedian), double(fmax_), pps[N_PPS - 1], double(pmin_), double(pavg), double(pmedian), double(pmax_), errors);
   setNoCacheHeaders();
-	webServer->send(200, "text/html", p);
+	web_server->send(200, "text/html", p);
 }
 
 void handleNotFound() {
-  webServer->sendHeader("Location", "/", true);
+  web_server->sendHeader("Location", "/", true);
   setNoCacheHeaders();
-  webServer->send(302, "text/plane", "Page does not exist");
+  web_server->send(302, "text/plane", "Page does not exist");
 }
 
 void restartMqtt(bool disconnect) {
@@ -511,38 +511,38 @@ void sendDone(const char *const msg) {
       "<meta http-equiv=\"refresh\" content=\"1; URL=/\" />"
       "<link href=\"/simple.css\" rel=\"stylesheet\" type=\"text/css\"></head>"
       "<body><header><h1>LightBox</h1></header><article><section><header><h2>result</h2><p>%s</p></header></section></artitle></body></html>", msg);
-  webServer->send(200, "text/html", p);
+  web_server->send(200, "text/html", p);
 }
 
 void handleSetMqtt() {
   bool   fail = false;
   String temp;
 
-  temp = webServer->arg("mqtt-server");
+  temp = web_server->arg("mqtt-server");
   if (temp.length() < sizeof(mqtt_server))
     strcpy(mqtt_server, temp.c_str());
   else
     fail = true;
 
-  temp = webServer->arg("mqtt-text-topic");
+  temp = web_server->arg("mqtt-text-topic");
   if (temp.length() < sizeof(mqtt_text_topic))
     strcpy(mqtt_text_topic, temp.c_str());
   else
     fail = true;
 
-  temp = webServer->arg("mqtt-bitmap-topic");
+  temp = web_server->arg("mqtt-bitmap-topic");
   if (temp.length() < sizeof(mqtt_bitmap_topic))
     strcpy(mqtt_bitmap_topic, temp.c_str());
   else
     fail = true;
 
-  temp = webServer->arg("mqtt-on-off-topic");
+  temp = web_server->arg("mqtt-on-off-topic");
   if (temp.length() < sizeof(mqtt_on_topic))
     strcpy(mqtt_on_topic, temp.c_str());
   else
     fail = true;
 
-  int new_mqtt_port = atoi(webServer->arg("mqtt-port").c_str());
+  int new_mqtt_port = atoi(web_server->arg("mqtt-port").c_str());
   if (new_mqtt_port != 0 && new_mqtt_port != 65535)
     mqtt_port = new_mqtt_port;
   else
@@ -550,7 +550,7 @@ void handleSetMqtt() {
 
   setNoCacheHeaders();
   if (fail)
-    webServer->send(200, "text/html", "<html><head><meta http-equiv=\"refresh\" content=\"2; URL=/\" /></head><body>invalid parameters</body></html>");
+    web_server->send(200, "text/html", "<html><head><meta http-equiv=\"refresh\" content=\"2; URL=/\" /></head><body>invalid parameters</body></html>");
   else {
     sendDone("OK");
     writeSettings();
@@ -569,12 +569,12 @@ void handleResetWiFi() {
 
 void handleSimpleCSS() {
   setNoCacheHeaders();
-	webServer->send(200, "text/css", simple_css, simple_css_len);
+	web_server->send(200, "text/css", simple_css, simple_css_len);
 }
 
 void handleFavicon() {
   setNoCacheHeaders();
-	webServer->send(200, "image/x-icon", favicon_ico, favicon_ico_len);
+	web_server->send(200, "image/x-icon", favicon_ico, favicon_ico_len);
 }
 
 void sendTogglesPage() {
@@ -729,7 +729,7 @@ void handleDdpData(const uint8_t *const buffer, const size_t n) {
 void myDelay(int ms) {
   uint32_t until = millis() + ms;
   do {
-    webServer->handleClient();
+    web_server->handleClient();
     ArduinoOTA.handle();
   }
   while(millis() < until);
@@ -768,39 +768,39 @@ void setup() {
 	data[0] = 3;
   putScreen();
 
-	webServer = new ESP8266WebServer(80);
+	web_server = new ESP8266WebServer(80);
 
-	webServer->on("/",                   handleRoot        );
-	webServer->on("/index.html",         handleRoot        );
-	webServer->on("/favicon.ico",        handleFavicon     );
-	webServer->on("/screendump.bmp",     handleScreendump  );
-	webServer->on("/sparkline-fps.bmp",  handleFpsSparkline);
-	webServer->on("/sparkline-pps.bmp",  handlePpsSparkline);
-	webServer->on("/simple.css",         handleSimpleCSS   );
-	webServer->on("/reset-wifi",         handleResetWiFi   );
+	web_server->on("/",                   handleRoot        );
+	web_server->on("/index.html",         handleRoot        );
+	web_server->on("/favicon.ico",        handleFavicon     );
+	web_server->on("/screendump.bmp",     handleScreendump  );
+	web_server->on("/sparkline-fps.bmp",  handleFpsSparkline);
+	web_server->on("/sparkline-pps.bmp",  handlePpsSparkline);
+	web_server->on("/simple.css",         handleSimpleCSS   );
+	web_server->on("/reset-wifi",         handleResetWiFi   );
 
-	webServer->on("/set-mqtt",           HTTP_POST, handleSetMqtt);
+	web_server->on("/set-mqtt",           HTTP_POST, handleSetMqtt);
 
-  webServer->on("/toggle-pixelflood",  handleTogglePixelflood );
-  webServer->on("/toggle-mqtt-text",   handleToggleMQTTText   );
-  webServer->on("/toggle-mqtt-bitmap", handleToggleMQTTBitmap );
-  webServer->on("/toggle-multicast",   handleToggleMulticast  );
-	webServer->on("/toggle-screensaver", handleToggleScreensaver);
-	webServer->on("/toggle-ddp",         handleToggleDdp        );
-	webServer->on("/toggle-ddp-ann",     handleToggleDdpAnnounce);
-	webServer->on("/toggle-text-anim",   handleToggleTextAnim   );
+  web_server->on("/toggle-pixelflood",  handleTogglePixelflood );
+  web_server->on("/toggle-mqtt-text",   handleToggleMQTTText   );
+  web_server->on("/toggle-mqtt-bitmap", handleToggleMQTTBitmap );
+  web_server->on("/toggle-multicast",   handleToggleMulticast  );
+	web_server->on("/toggle-screensaver", handleToggleScreensaver);
+	web_server->on("/toggle-ddp",         handleToggleDdp        );
+	web_server->on("/toggle-ddp-ann",     handleToggleDdpAnnounce);
+	web_server->on("/toggle-text-anim",   handleToggleTextAnim   );
 
-	webServer->on("/description.xml", HTTP_GET, []() { SSDP.schema(webServer->client()); });
+	web_server->on("/description.xml", HTTP_GET, []() { SSDP.schema(web_server->client()); });
 
-  webServer->onNotFound(handleNotFound);
+  web_server->onNotFound(handleNotFound);
 
-	httpUpdater.setup(webServer);
+	httpUpdater.setup(web_server);
 
-	webServer->begin();
+	web_server->begin();
 
 	startMDNS();
 
-	startSSDP(webServer);
+	startSSDP(web_server);
 
 	data[0] = 7;
   putScreen();
@@ -810,8 +810,8 @@ void setup() {
   udp_txt_pixelflood_server  .begin(PIXELFLOOD_TXT_PORT         );
   udp_bin_pixelflood_server  .begin(PIXELFLOOD_BIN_PORT         );
   udp_announce_bin_pixelflood.begin(PIXELFLOOD_BIN_ANNOUNCE_PORT);
-  udp_DDP                  .begin(DDP_PORT                    );
-  udp_text                 .begin(TEXT_PORT                   );
+  udp_DDP                    .begin(DDP_PORT                    );
+  udp_text                   .begin(TEXT_PORT                   );
 
   auto ip = WiFi.localIP();
   auto netmask = WiFi.subnetMask();
@@ -940,8 +940,8 @@ std::pair<bool, bool> processDdpStream() {
 }
 
 void processUdpTextStream() {
-  int packetSizeText = udp_text.parsePacket();
-  if (packetSizeText) {
+  int packet_size_text = udp_text.parsePacket();
+  if (packet_size_text) {
     int len = udp_text.read(work_buffer, 9 * 3 + 1);
     if (len >= 0)
       work_buffer[len] = 0x00;
@@ -967,7 +967,7 @@ void loop() {
   if (in_ota)
     return;
 
-	webServer->handleClient();
+	web_server->handleClient();
 
   if (enable_mqtt_bitmap || enable_mqtt_text)
     MQTTConnect();
