@@ -659,12 +659,7 @@ void lzjbDecompress(uint8_t *s_start, uint8_t *d_start, size_t s_len, size_t d_l
 }
 
 void ledupdate(LedControl & dev, const uint8_t *const buf) {
-	const uint8_t *pb = buf;
-
-	for (uint8_t panel = 0; panel < 8; panel++) {
-		for (uint8_t y = 0; y < 8; y++)
-			dev.setRow(panel, y, *pb++);
-	}
+  dev.pushEverything(buf);
 }
 
 void sendDdpAnnouncement(const bool is_announncement, const IPAddress & ip, const uint16_t port) {
