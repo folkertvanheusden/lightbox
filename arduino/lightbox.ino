@@ -280,7 +280,7 @@ void startSSDP(ESP8266WebServer *const ws) {
 	SSDP.setURL("index.html");
 	SSDP.setModelName("LightBox");
 	SSDP.setModelNumber("1.0");
-	SSDP.setModelURL("http://www.komputilo.nl/Arduino/lightbox");
+	SSDP.setModelURL("http://www.komputilo.nl/texts/lightbox");
 	SSDP.setManufacturer("van Heusden");
 	SSDP.setManufacturerURL("http://www.komputilo.nl/");
 
