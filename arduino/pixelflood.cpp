@@ -24,7 +24,7 @@ struct pf {
   char       buffer[BS] {         };
 };
 
-std::vector<pf> pfClients;
+std::vector<pf> pf_clients;
 
 extern bool setPixelChecked(const unsigned x, const unsigned y, const bool c);
 
@@ -155,7 +155,7 @@ bool processBinPixelflood(const uint16_t len) {
 
 void sendBinPixelfloodAnnouncement() {
   static uint32_t prev_send = 0;
-	uint32_t        now       = millis();
+         uint32_t now       = millis();
   if (now - prev_send < PIXELFLOOD_ANNOUNCE_INTERVAL)
     return;
   prev_send = now;
@@ -182,29 +182,29 @@ std::pair<bool, bool> processPixelfloodStreams() {
     Serial.println(F("new TCP client"));
 #endif
     // check if all still there
-    for(size_t i=0; i<pfClients.size();) {
-      if (pfClients.at(i).handle.connected() == false) {
-        pfClients.erase(pfClients.begin() + i);
+    for(size_t i=0; i<pf_clients.size();) {
+      if (pf_clients.at(i).handle.connected() == false) {
+        pf_clients.erase(pf_clients.begin() + i);
       }
       else {
         i++;
       }
     }
     // max 32 clients
-    while(pfClients.size() > 32) {
-      pfClients.erase(pfClients.begin());
+    while(pf_clients.size() > 32) {
+      pf_clients.erase(pf_clients.begin());
       Serial.println(F("CLOSE SESSION"));
     }
 
-    pfClients.push_back({ WiFiClient(new_pixelflood_client), 0 });
-    pfClients.back().buffer[BS - 1] = 0x00;
+    pf_clients.push_back({ WiFiClient(new_pixelflood_client), 0 });
+    pf_clients.back().buffer[BS - 1] = 0x00;
 
     activity = true;
   }
 
   // check pixelflood clients for data
-  for(size_t i=0; i<pfClients.size(); i++) {
-    auto & pf_ref = pfClients[i];
+  for(size_t i=0; i<pf_clients.size(); i++) {
+    auto & pf_ref = pf_clients[i];
 
     // read data from socket until \n is received (a complete pixelflood "packet")
     bool fin = false;
@@ -275,8 +275,8 @@ std::pair<bool, bool> processPixelfloodStreams() {
   }
 
   // check UDP text pixelflood
-  int packetSizeTxt = udp_txt_pixelflood_server.parsePacket();
-  if (packetSizeTxt) {
+  int packet_size_txt = udp_txt_pixelflood_server.parsePacket();
+  if (packet_size_txt) {
     int len = udp_txt_pixelflood_server.read(work_buffer, sizeof(work_buffer) - 1);
     work_buffer[len] = 0x00;
 #if defined(DEBUG)
@@ -300,8 +300,8 @@ std::pair<bool, bool> processPixelfloodStreams() {
   }
 
   // check UDP bin pixelflood
-  int packetSizeBin = udp_bin_pixelflood_server.parsePacket();
-  if (packetSizeBin) {
+  int packet_size_bin = udp_bin_pixelflood_server.parsePacket();
+  if (packet_size_bin) {
     uint16_t len = udp_bin_pixelflood_server.read(work_buffer, sizeof work_buffer);
 #if defined(DEBUG)
     Serial.printf_P("UDPBIN: %d\r\n", len);
