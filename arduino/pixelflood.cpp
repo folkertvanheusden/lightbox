@@ -243,11 +243,11 @@ std::pair<bool, bool> processPixelfloodStreams() {
         char *lf = strchr(work_p, '\n');
         if (!lf) {
           int bytes_left = end_p - work_p;
-	  if (bytes_left > 0 && bytes_left < BS) {
+	  if (bytes_left < BS) {
             memcpy(pf_ref.buffer, work_p, bytes_left);
             pf_ref.o = bytes_left;
           }
-	  else if (bytes_left != 0) {
+	  else {
             pf_ref.handle.stop();
 	  }
 	  fin = true;

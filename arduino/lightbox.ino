@@ -629,10 +629,11 @@ void handleToggleTextAnim() {
 
 void lzjbDecompress(uint8_t *s_start, uint8_t *d_start, size_t s_len, size_t d_len) {
 	constexpr const byte NBBY = 8;
-	uint8_t *src = s_start;
-	uint8_t *dst = d_start;
-	uint8_t *d_end = d_start + d_len;
-	uint8_t *cpy = nullptr, copymap = 0;
+	uint8_t *src         = s_start;
+	uint8_t *dst         = d_start;
+	uint8_t *const d_end = d_start + d_len;
+	uint8_t *cpy         = nullptr;
+  uint8_t  copymap     = 0;
 	int copymask = 1 << (NBBY - 1);
 
 	while (dst < d_end) {

@@ -1,3 +1,5 @@
+// (C) 2019-2026 by Folkert van Heusden <folkert@komputilo.nl>
+
 // #define DEBUG
 #define SCREENSAVER_START   2100
 #define SCREENSAVER_ROTATE  15000

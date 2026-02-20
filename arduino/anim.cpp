@@ -61,17 +61,17 @@ void getQuadrant(int bx, int by, int dx, int dy, int cx, int cy, int r, std::vec
 }
 
 void circle(int r, int cx, int cy, std::vector<std::pair<int, int> > *const out) {
-	getQuadrant(cx, cy - r, 1, 1, cx, cy, r, out);
-	getQuadrant(cx + r, cy, -1, 1, cx, cy, r, out);
-	getQuadrant(cx, cy + r, -1, -1, cx, cy, r, out);
-	getQuadrant(cy - r, cy, 1, -1, cx, cy, r, out);
+	getQuadrant(cx,     cy - r,  1,  1, cx, cy, r, out);
+	getQuadrant(cx + r, cy,     -1,  1, cx, cy, r, out);
+	getQuadrant(cx,     cy + r, -1, -1, cx, cy, r, out);
+	getQuadrant(cy - r, cy,      1, -1, cx, cy, r, out);
 }
 
 void animate(int mode) {
 	cls();
 	if (mode == 1) {
-		static int y = 0;
-		static int d = 1;
+		static byte   y = 0;
+		static int8_t d = 1;
 
 		for(int x=0; x<WIDTH; x++)
 			setPixel(x, y, true);
@@ -87,8 +87,8 @@ void animate(int mode) {
 		}
 	}
 	else if (mode == 2) {
-		static int x = 0;
-		static int y = 0;
+		static byte x = 0;
+		static byte y = 0;
 
 		setPixel(x, y, true);
 
@@ -103,7 +103,7 @@ void animate(int mode) {
 	}
 	else if (mode == 3) {
 		static std::vector<std::pair<int, int> > pixels[4];
-		static int pixels_nr = 0;
+		static byte pixels_nr = 0;
 
 		pixels[pixels_nr].clear();
 		circle(1 + (rand() % WIDTH), rand() & (WIDTH - 1), rand() % HEIGHT, &pixels[pixels_nr++]);
