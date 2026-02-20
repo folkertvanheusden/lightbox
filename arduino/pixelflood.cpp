@@ -28,6 +28,17 @@ std::vector<pf> pf_clients;
 
 extern bool setPixelChecked(const unsigned x, const unsigned y, const bool c);
 
+int MY_ATOI(const char *p) {
+  int v = 0;
+  while(*p >= '0' && *p <= '9') {
+    v *= 10;
+    v += *p - '0';
+    p++;
+  }
+
+  return v;
+}
+
 bool processTxtPixelfloodPixel(const char *const buf, const char *const buf_end) {
   if (buf[0] != 'P' || buf[1] != 'X' || buf[2] != ' ') {
 #if defined(DEBUG)
@@ -52,8 +63,8 @@ bool processTxtPixelfloodPixel(const char *const buf, const char *const buf_end)
     return false;
   }
 
-  int x = atoi(sp[0]);
-  int y = atoi(sp[1]);
+  int x = MY_ATOI(sp[0] + 1);
+  int y = MY_ATOI(sp[1] + 1);
 
   if (buf_end - sp[2] < 6) {
 #if defined(DEBUG)
