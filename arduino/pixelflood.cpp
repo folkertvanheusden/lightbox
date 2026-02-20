@@ -12,10 +12,10 @@ extern WiFiClient  wclient;
 extern uint8_t     broadcast[4];
 extern uint8_t     work_buffer[4608];
 extern char       *p;
-extern WiFiServer  tcpTxtPixelfloodServer;
-extern WiFiUDP     udpTxtPixelfloodServer;
-extern WiFiUDP     udpBinPixelfloodServer;
-extern WiFiUDP     udpAnnounceBinPixelflood;
+extern WiFiServer  tcp_txt_pixelflood_server;
+extern WiFiUDP     udp_txt_pixelflood_server;
+extern WiFiUDP     udp_bin_pixelflood_server;
+extern WiFiUDP     udp_announce_bin_pixelflood;
 
 #define BS  16
 struct pf {
@@ -164,9 +164,9 @@ void sendBinPixelfloodAnnouncement() {
 #if defined(DEBUG)
   Serial.println(p);
 #endif
-  udpAnnounceBinPixelflood.beginPacket(broadcast, PIXELFLOOD_BIN_ANNOUNCE_PORT);
-  udpAnnounceBinPixelflood.write(p);
-  udpAnnounceBinPixelflood.endPacket();
+  udp_announce_bin_pixelflood.beginPacket(broadcast, PIXELFLOOD_BIN_ANNOUNCE_PORT);
+  udp_announce_bin_pixelflood.write(p);
+  udp_announce_bin_pixelflood.endPacket();
 }
 
 std::pair<bool, bool> processPixelfloodStreams() {
@@ -176,8 +176,8 @@ std::pair<bool, bool> processPixelfloodStreams() {
   sendBinPixelfloodAnnouncement();
 
   // pixelflood connection management
-  WiFiClient newPixelfloodClient = tcpTxtPixelfloodServer.available();
-  if (newPixelfloodClient) {
+  WiFiClient new_pixelflood_client = tcp_txt_pixelflood_server.available();
+  if (new_pixelflood_client) {
 #if defined(DEBUG)
     Serial.println(F("new TCP client"));
 #endif
@@ -196,7 +196,7 @@ std::pair<bool, bool> processPixelfloodStreams() {
       Serial.println(F("CLOSE SESSION"));
     }
 
-    pfClients.push_back({ WiFiClient(newPixelfloodClient), 0 });
+    pfClients.push_back({ WiFiClient(new_pixelflood_client), 0 });
     pfClients.back().buffer[BS - 1] = 0x00;
 
     activity = true;
@@ -275,9 +275,9 @@ std::pair<bool, bool> processPixelfloodStreams() {
   }
 
   // check UDP text pixelflood
-  int packetSizeTxt = udpTxtPixelfloodServer.parsePacket();
+  int packetSizeTxt = udp_txt_pixelflood_server.parsePacket();
   if (packetSizeTxt) {
-    int len = udpTxtPixelfloodServer.read(work_buffer, sizeof(work_buffer) - 1);
+    int len = udp_txt_pixelflood_server.read(work_buffer, sizeof(work_buffer) - 1);
     work_buffer[len] = 0x00;
 #if defined(DEBUG)
     Serial.printf_P("UDPTXT: %d, %s\r\n", len, p);
@@ -300,9 +300,9 @@ std::pair<bool, bool> processPixelfloodStreams() {
   }
 
   // check UDP bin pixelflood
-  int packetSizeBin = udpBinPixelfloodServer.parsePacket();
+  int packetSizeBin = udp_bin_pixelflood_server.parsePacket();
   if (packetSizeBin) {
-    uint16_t len = udpBinPixelfloodServer.read(work_buffer, sizeof work_buffer);
+    uint16_t len = udp_bin_pixelflood_server.read(work_buffer, sizeof work_buffer);
 #if defined(DEBUG)
     Serial.printf_P("UDPBIN: %d\r\n", len);
 #endif

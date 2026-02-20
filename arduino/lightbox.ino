@@ -26,13 +26,13 @@
 #include "simple-css.h"
 
 
-WiFiUDP    udpMC;  // multicast LZJB compressed bitmap (64x24)
-WiFiServer tcpTxtPixelfloodServer(PIXELFLOOD_TXT_PORT);
-WiFiUDP    udpTxtPixelfloodServer;
-WiFiUDP    udpBinPixelfloodServer;
-WiFiUDP    udpAnnounceBinPixelflood;
-WiFiUDP    udpDdp;
-WiFiUDP    udpText;
+WiFiUDP    udp_MC;  // multicast LZJB compressed bitmap (64x24)
+WiFiServer tcp_txt_pixelflood_server(PIXELFLOOD_TXT_PORT);
+WiFiUDP    udp_txt_pixelflood_server;
+WiFiUDP    udp_bin_pixelflood_server;
+WiFiUDP    udp_announce_bin_pixelflood;
+WiFiUDP    udp_DDP;
+WiFiUDP    udp_text;
 uint8_t    broadcast[4] { };
 
 char       mqtt_server       [64] { "vps001.komputilo.nl"    };
@@ -45,7 +45,7 @@ uint16_t   mqtt_port              { 1883                     };
 static bool in_ota = false;
 
 WiFiClient   wclient;
-PubSubClient mqttclient(wclient);
+PubSubClient mqtt_client(wclient);
 
 char name[32] { };
 
@@ -149,10 +149,10 @@ void reboot() {
 	delay(1000);
 }
 
-bool MQTT_subscribe(const char topic[]) {
-		if (mqttclient.subscribe(topic) == false) {
+bool MQTTSubscribe(const char topic[]) {
+		if (mqtt_client.subscribe(topic) == false) {
 			Serial.println(F("subscribe failed"));
-      mqttclient.disconnect();
+      mqtt_client.disconnect();
       return false;
     }
 
@@ -203,17 +203,17 @@ void text(const char line[], const bool fast = false) {
   putScreen();
 }
 
-void MQTT_connect() {
-	mqttclient.loop();
+void MQTTConnect() {
+	mqtt_client.loop();
 
-	if (!mqttclient.connected()) {
+	if (!mqtt_client.connected()) {
     do {
 			Serial.print(F("Attempting MQTT connection to "));
       Serial.println(mqtt_server);
 
       cls();
       snprintf(mqtt_on_topic_full, sizeof mqtt_on_topic_full, "%s/%s", mqtt_on_topic, &name[4]);  // include serial number
-			if (mqttclient.connect(name, "", "", mqtt_on_topic_full, 1, true, "0")) {
+			if (mqtt_client.connect(name, "", "", mqtt_on_topic_full, 1, true, "0")) {
         // text("MQTT OK", true);
 				Serial.println(F("Connected"));
 				break;
@@ -223,19 +223,19 @@ void MQTT_connect() {
 
 			myDelay(1000);
     }
-		while (!mqttclient.connected());
+		while (!mqtt_client.connected());
 
 		Serial.println(F("MQTT Connected!"));
 
-    if (MQTT_subscribe(mqtt_text_topic) == false || MQTT_subscribe(mqtt_bitmap_topic) == false) {
+    if (MQTTSubscribe(mqtt_text_topic) == false || MQTTSubscribe(mqtt_bitmap_topic) == false) {
       cls();
       text("MQTT ERR", true);
     }
     else {
-      mqttclient.publish(mqtt_on_topic_full, "1", true);
+      mqtt_client.publish(mqtt_on_topic_full, "1", true);
     }
 
-		mqttclient.loop();
+		mqtt_client.loop();
 	}
 }
 
@@ -499,8 +499,8 @@ void handleNotFound() {
 
 void restartMqtt(bool disconnect) {
   if (disconnect)
-    mqttclient.disconnect();
-	mqttclient.setServer(mqtt_server, mqtt_port);
+    mqtt_client.disconnect();
+	mqtt_client.setServer(mqtt_server, mqtt_port);
 }
 
 void sendDone(const char *const msg) {
@@ -685,9 +685,9 @@ void sendDdpAnnouncement(const bool is_announncement, const IPAddress & ip, cons
   Serial.println(&p[10]);
 #endif
 
-  udpDdp.beginPacket(ip, port);
-  udpDdp.write(work_buffer, msg_len + 10);
-  udpDdp.endPacket();
+  udp_DDP.beginPacket(ip, port);
+  udp_DDP.write(work_buffer, msg_len + 10);
+  udp_DDP.endPacket();
  }
 
 void handleDdpData(const uint8_t *const buffer, const size_t n) {
@@ -805,13 +805,13 @@ void setup() {
 	data[0] = 7;
   putScreen();
 
-	udpMC.beginMulticast(WiFi.localIP(), IPAddress(226, 1, 1, 9), 32009);
-  tcpTxtPixelfloodServer  .begin(                            );
-  udpTxtPixelfloodServer  .begin(PIXELFLOOD_TXT_PORT         );
-  udpBinPixelfloodServer  .begin(PIXELFLOOD_BIN_PORT         );
-  udpAnnounceBinPixelflood.begin(PIXELFLOOD_BIN_ANNOUNCE_PORT);
-  udpDdp                  .begin(DDP_PORT                    );
-  udpText                 .begin(TEXT_PORT                   );
+	udp_MC.beginMulticast(WiFi.localIP(), IPAddress(226, 1, 1, 9), 32009);
+  tcp_txt_pixelflood_server  .begin(                            );
+  udp_txt_pixelflood_server  .begin(PIXELFLOOD_TXT_PORT         );
+  udp_bin_pixelflood_server  .begin(PIXELFLOOD_BIN_PORT         );
+  udp_announce_bin_pixelflood.begin(PIXELFLOOD_BIN_ANNOUNCE_PORT);
+  udp_DDP                  .begin(DDP_PORT                    );
+  udp_text                 .begin(TEXT_PORT                   );
 
   auto ip = WiFi.localIP();
   auto netmask = WiFi.subnetMask();
@@ -824,7 +824,7 @@ void setup() {
   putScreen();
 
   restartMqtt(false);
-	mqttclient.setCallback(callback);
+	mqtt_client.setCallback(mqttCallback);
 
 #if defined(DEBUG)
   text("DEBUG!");
@@ -877,7 +877,7 @@ void printRow(int o, const char what[]) {
   }
 }
 
-void callback(const char topic[], byte *payload, unsigned int len) {
+void mqttCallback(const char topic[], byte *payload, unsigned int len) {
 	if (!payload || len == 0)
 		return;
 
@@ -921,14 +921,14 @@ std::pair<bool, bool> processDdpStream() {
   bool activity       = false;
   bool drawn_anything = false;
 
-  int packetSizeDdp = udpDdp.parsePacket();
+  int packetSizeDdp = udp_DDP.parsePacket();
   if (packetSizeDdp) {
-    int len = udpDdp.read(work_buffer, sizeof work_buffer);
+    int len = udp_DDP.read(work_buffer, sizeof work_buffer);
 #if defined(DEBUG)
     Serial.printf_P("UDPDDP: %d\r\n", len);
 #endif
     if (work_buffer[3] == 251 && (work_buffer[0] & 2))
-      sendDdpAnnouncement(false, udpDdp.remoteIP(), udpDdp.remotePort());
+      sendDdpAnnouncement(false, udp_DDP.remoteIP(), udp_DDP.remotePort());
     else {
       handleDdpData(work_buffer, len);
       drawn_anything = true;
@@ -940,9 +940,9 @@ std::pair<bool, bool> processDdpStream() {
 }
 
 void processUdpTextStream() {
-  int packetSizeText = udpText.parsePacket();
+  int packetSizeText = udp_text.parsePacket();
   if (packetSizeText) {
-    int len = udpText.read(work_buffer, 9 * 3 + 1);
+    int len = udp_text.read(work_buffer, 9 * 3 + 1);
     if (len >= 0)
       work_buffer[len] = 0x00;
 #if defined(DEBUG)
@@ -970,7 +970,7 @@ void loop() {
 	webServer->handleClient();
 
   if (enable_mqtt_bitmap || enable_mqtt_text)
-    MQTT_connect();
+    MQTTConnect();
 
   bool activity       = false;
   bool drawn_anything = false;
@@ -985,12 +985,12 @@ void loop() {
 	static int      mode         = 0;
 	uint32_t        now          = millis();
   if (enable_multicast) {
-    int packetSizeMC = udpMC.parsePacket();
-    if (packetSizeMC) {
+    int packet_size_mc = udp_MC.parsePacket();
+    if (packet_size_mc) {
 #if defined(DEBUG)
-      Serial.printf_P("UDPMC: %d\r\n", packetSizeMC);
+      Serial.printf_P("UDPMC: %d\r\n", packet_size_mc);
 #endif
-      int len = udpMC.read(work_buffer, sizeof work_buffer);
+      int len = udp_MC.read(work_buffer, sizeof work_buffer);
       lzjbDecompress(work_buffer, data, len, 192);
       n_pixels_drawn += WIDTH * HEIGHT;
       drawn_anything = true;
