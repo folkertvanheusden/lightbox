@@ -71,7 +71,7 @@ bool enable_ddp          = true;
 bool enable_ddp_announce = true;
 bool enable_text_anim    = true;
 
-uint8_t work_buffer[4608];  // enough to fit a BMP in
+uint8_t work_buffer[4608];  // enough to fit a BMP or SVG in
 char   *p = reinterpret_cast<char *>(work_buffer);
 uint8_t data[192];
 
@@ -433,7 +433,7 @@ void sendSparkline(const float *const from_what, const int n) {
   if (extent) {
     constexpr const int w = 256;
     constexpr const int h = 128;
-    int offset = snprintf(p, sizeof work_buffer, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"%d\" height=\"%d\"><rect width=\"%d\" height=\"%d\" x=\"0\" y=\"0\" fill=\"white\"/><polyline stroke=\"red\" fill=\"none\" points=\"", w, h, w, h);
+    int offset = snprintf(p, sizeof work_buffer, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"%d\" height=\"%d\"><rect width=\"%d\" height=\"%d\" fill=\"white\" /><polyline stroke=\"red\" fill=\"none\" points=\"", w, h, w, h);
     for(int i=0; i<n; i++) {
       int x = i * w / n;
       int y = h - (from_what[i] - min_) * h / extent;
