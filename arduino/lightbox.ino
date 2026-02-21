@@ -239,9 +239,9 @@ void MQTTConnect() {
 }
 
 void wifiCfgEnabled(WiFiManager *) {
-  text("configure");
-  text("WiFi");
-  text("please");
+  text("configure", true);
+  text("WiFi"     , true);
+  text("please"   , true);
 }
 
 void setupWifi() {
