@@ -114,4 +114,6 @@ void animate(int mode) {
         setPixel(pixel.first, pixel.second, !getPixel(pixel.first, pixel.second));
     }
   }
+
+  delay(20);
 }
