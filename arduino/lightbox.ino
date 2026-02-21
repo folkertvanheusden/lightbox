@@ -404,13 +404,6 @@ void handleScreendump() {
   sendBmp(getPixel);
 }
 
-uint8_t bmp_sparkline[8 * 24];
-
-bool sparklineGetPixel(const int x, const int y) {
-  uint8_t mask = 1 << (7 - (x & 7));
-  return bmp_sparkline[y * 8 + (x >> 3)] & mask;
-}
-
 int sorter(const void *p1, const void *p2) {
   auto v1 = *reinterpret_cast<const float *>(p1);
   auto v2 = *reinterpret_cast<const float *>(p2);
@@ -434,37 +427,30 @@ std::tuple<float, float, float, float> calcSparklineMinMax(const float *const fr
   return { min_, avg / n, max_, copy[n / 2] };
 }
 
-void drawSparkline(const float *const from_what, const int n) {
-  memset(bmp_sparkline, 0x00, sizeof bmp_sparkline);
-
+void sendSparkline(const float *const from_what, const int n) {
   auto [ min_, avg, max_, median ] = calcSparklineMinMax(from_what, n);
   float extent = max_ - min_;
   if (extent) {
-    int py = -1;
+    constexpr const int w = 256;
+    constexpr const int h = 128;
+    int offset = snprintf(p, sizeof work_buffer, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"%d\" height=\"%d\"><rect width=\"%d\" height=\"%d\" x=\"0\" y=\"0\" fill=\"white\"/><polyline stroke=\"red\" fill=\"none\" points=\"", w, h, w, h);
     for(int i=0; i<n; i++) {
-      int y = (from_what[i] - min_) * 23.9 / extent;
-      uint8_t mask = 1 << (7 - (i & 7));
-      uint8_t cell = i >> 3;
-      if (py != -1) {
-        for(int draw_y = std::min(py, y); draw_y <= std::max(py, y); draw_y++)
-          bmp_sparkline[(HEIGHT - 1 - draw_y) * 8 + cell] |= mask;
-      }
-      else {
-        bmp_sparkline[(HEIGHT - 1 - y) * 8 + cell] |= mask;
-      }
-      py = y;
+      int x = i * w / n;
+      int y = h - (from_what[i] - min_) * h / extent;
+      offset += snprintf(&p[offset], sizeof(work_buffer) - offset, "%d,%d ", x, y);
     }
+    offset += snprintf(&p[offset], sizeof(work_buffer) - offset, "\" /></svg>");
   }
+
+  web_server->send(200, "image/svg+xml", p);
 }
 
 void handleFpsSparkline() {
-  drawSparkline(fps, N_FPS);
-  sendBmp(sparklineGetPixel);
+  sendSparkline(fps, N_FPS);
 }
 
 void handlePpsSparkline() {
-  drawSparkline(pps, N_PPS);
-  sendBmp(sparklineGetPixel);
+  sendSparkline(pps, N_PPS);
 }
 
 void handleRoot() {
@@ -481,7 +467,7 @@ void handleRoot() {
       "<section><header><h2>screenshot</h2></header><p><img src=\"/screendump.bmp\" alt=\"screen shot\" border=\"1\" width=\"256\" height=\"96\"></p></section>"
       "<section><header><h2>toggles</h2></header><p><table><tr><th>what</th><th>state</th><tr><td><a href=\"/toggle-pixelflood\">pixelflood</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-mqtt-text\">MQTT text</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-mqtt-bitmap\">MQTT bitmap</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-multicast\">multicast</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-screensaver\">screensaver</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-ddp\">ddp</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-ddp-ann\">ddp announcements</a></td><td>%s</td></tr><tr><td><a href=\"/toggle-text-anim\">text animation</a></td><td>%s</td></tr></table></section>"
       "<section><header><h2>MQTT settings</h2></header><p><form action=\"/set-mqtt\" enctype=\"application/x-www-form-urlencoded\" method=\"POST\"><table><tr><th>what</th><th>setting</th></tr><tr><td>server</td><td><input type=\"text\" id=\"mqtt-server\" name=\"mqtt-server\" value=\"%s\"></td></tr><tr><td>port</td><td><input type=\"text\" id=\"mqtt-port\" name=\"mqtt-port\" value=\"%d\"></td></tr><tr><td>text topic</td><td><input type=\"text\" id=\"mqtt-text-topic\" name=\"mqtt-text-topic\" value=\"%s\"></td></tr><tr><td>bitmap topic</td><td><input type=\"text\" id=\"mqtt-bitmap-topic\" name=\"mqtt-bitmap-topic\" value=\"%s\"></td></tr><tr><td>on/off notification</td><td><input type=\"text\" id=\"mqtt-on-off-topic\" name=\"mqtt-on-off-topic\" value=\"%s\"></td></tr><tr><td></td><td><input type=\"submit\"></td></tr></table></form></p></section>"
-      "<section><header><h2>Miscellaneous</h2></header><p>Connected to: <b>%s</b><br>System ID: %s<br><table><tr><th>what</th><th>stats</th><th>sparkline</th></tr><tr><td>fps:</td><td>%.2f (min: %.2f, avg: %.2f, median: %.2f, max: %.2f)</td><td><img src=\"/sparkline-fps.bmp\" width=\"256\" height=\"96\" alt=\"sparkline showing fps over time\" border=\"1\"></td></tr><tr><td>pps:</td><td>%.2f (min: %.2f, avg: %.2f, median: %.2f, max: %.2f)</td><td><img src=\"/sparkline-pps.bmp\" width=\"256\" height=\"96\" alt=\"sparkline showing pps over time\" border=\"1\"></td></tr></table><br>errors: %u</p></section>"
+      "<section><header><h2>Miscellaneous</h2></header><p>Connected to: <b>%s</b><br>System ID: %s<br><table><tr><th>what</th><th>stats</th><th>sparkline</th></tr><tr><td>fps:</td><td>%.2f (min: %.2f, avg: %.2f, median: %.2f, max: %.2f)</td><td><img src=\"/sparkline-fps.svg\" alt=\"sparkline showing fps over time\" border=\"1\"></td></tr><tr><td>pps:</td><td>%.2f (min: %.2f, avg: %.2f, median: %.2f, max: %.2f)</td><td><img src=\"/sparkline-pps.svg\" alt=\"sparkline showing pps over time\" border=\"1\"></td></tr></table><br>errors: %u</p></section>"
       "<footer><header><h2>what?</h2></header><p>Designed by <a href=\"mailto:folkert@komputilo.nl\">Folkert van Heusden</a>, see <a href=\"https://komputilo.nl/texts/lightbox/\">https://komputilo.nl/texts/lightbox/</a> for more details.</p></footer></article></body></html>",
       tstr(enable_pixelflood), tstr(enable_mqtt_text), tstr(enable_mqtt_bitmap), tstr(enable_multicast), tstr(enable_screensaver), tstr(enable_ddp), tstr(enable_ddp_announce), tstr(enable_text_anim),
       mqtt_server, mqtt_port, mqtt_text_topic, mqtt_bitmap_topic, mqtt_on_topic,
@@ -799,8 +785,8 @@ void setup() {
   web_server->on("/index.html",         handleRoot        );
   web_server->on("/favicon.ico",        handleFavicon     );
   web_server->on("/screendump.bmp",     handleScreendump  );
-  web_server->on("/sparkline-fps.bmp",  handleFpsSparkline);
-  web_server->on("/sparkline-pps.bmp",  handlePpsSparkline);
+  web_server->on("/sparkline-fps.svg",  handleFpsSparkline);
+  web_server->on("/sparkline-pps.svg",  handlePpsSparkline);
   web_server->on("/simple.css",         handleSimpleCSS   );
   web_server->on("/reset-wifi",         handleResetWiFi   );
 
