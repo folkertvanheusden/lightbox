@@ -254,16 +254,16 @@ std::pair<bool, bool> processPixelfloodStreams() {
         char *lf = strchr(work_p, '\n');
         if (!lf) {
           int bytes_left = end_p - work_p;
-	  if (bytes_left < BS) {
+          if (bytes_left < BS) {
             memcpy(pf_ref.buffer, work_p, bytes_left);
             pf_ref.o = bytes_left;
           }
-	  else {
+          else {
             pf_ref.handle.stop();
-	  }
-	  fin = true;
+          }
+          fin = true;
           break;
-	}
+        }
 
         if (strncmp(work_p, "SIZE", 4) == 0) {
           char buffer[16];
@@ -273,11 +273,11 @@ std::pair<bool, bool> processPixelfloodStreams() {
           Serial.println(F("SIZE request"));
 #endif
         }
-	else if (processTxtPixelfloodPixel(work_p, lf) == false) {
+        else if (processTxtPixelfloodPixel(work_p, lf) == false) {
           pf_ref.handle.stop();
-	  fin = true;
+          fin = true;
           break;
-	}
+        }
         drawn_anything = true;
         work_p = lf + 1;
       }

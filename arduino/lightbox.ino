@@ -142,26 +142,25 @@ void writeSettings() {
 }
 
 void reboot() {
-	Serial.println(F("Reboot"));
-	Serial.flush();
-	delay(100);
-	ESP.restart();
-	delay(1000);
+  Serial.println(F("Reboot"));
+  Serial.flush();
+  delay(100);
+  ESP.restart();
+  delay(1000);
 }
 
 bool MQTTSubscribe(const char topic[]) {
-		if (mqtt_client.subscribe(topic) == false) {
-			Serial.println(F("subscribe failed"));
-      mqtt_client.disconnect();
-      return false;
-    }
+  if (mqtt_client.subscribe(topic) == false) {
+    Serial.println(F("subscribe failed"));
+    mqtt_client.disconnect();
+    return false;
+  }
 
-		Serial.println(F("subscribed"));
-    return true;
+   Serial.println(F("subscribed"));
+  return true;
 }
 
-IRAM_ATTR void setPixel(const int x, const int y, const bool c)
-{
+IRAM_ATTR void setPixel(const int x, const int y, const bool c) {
   uint16_t base  = (y >> 3) * WIDTH;
   uint16_t o     = base + ((x >> 3) << 3) + 7 - (y & 7);
   uint8_t  xo    = x & 7;
@@ -204,28 +203,28 @@ void text(const char line[], const bool fast = false) {
 }
 
 void MQTTConnect() {
-	mqtt_client.loop();
+  mqtt_client.loop();
 
-	if (!mqtt_client.connected()) {
+  if (!mqtt_client.connected()) {
     do {
-			Serial.print(F("Attempting MQTT connection to "));
+      Serial.print(F("Attempting MQTT connection to "));
       Serial.println(mqtt_server);
 
       cls();
       snprintf(mqtt_on_topic_full, sizeof mqtt_on_topic_full, "%s/%s", mqtt_on_topic, &name[4]);  // include serial number
-			if (mqtt_client.connect(name, "", "", mqtt_on_topic_full, 1, true, "0")) {
+      if (mqtt_client.connect(name, "", "", mqtt_on_topic_full, 1, true, "0")) {
         // text("MQTT OK", true);
-				Serial.println(F("Connected"));
-				break;
-			}
+        Serial.println(F("Connected"));
+        break;
+      }
 
       text("MQTT FAIL", true);
 
-			myDelay(1000);
+      myDelay(1000);
     }
-		while (!mqtt_client.connected());
+    while (!mqtt_client.connected());
 
-		Serial.println(F("MQTT Connected!"));
+    Serial.println(F("MQTT Connected!"));
 
     if (MQTTSubscribe(mqtt_text_topic) == false || MQTTSubscribe(mqtt_bitmap_topic) == false) {
       cls();
@@ -235,8 +234,8 @@ void MQTTConnect() {
       mqtt_client.publish(mqtt_on_topic_full, "1", true);
     }
 
-		mqtt_client.loop();
-	}
+    mqtt_client.loop();
+  }
 }
 
 void wifiCfgEnabled(WiFiManager *) {
@@ -246,87 +245,87 @@ void wifiCfgEnabled(WiFiManager *) {
 }
 
 void setupWifi() {
-	WiFi.hostname(name);
-	WiFi.begin();
+  WiFi.hostname(name);
+  WiFi.begin();
 
-	wifiManager.setDebugOutput(true);
+  wifiManager.setDebugOutput(true);
   wifiManager.setAPCallback(wifiCfgEnabled);
-	if (!wifiManager.autoConnect(name)) {
+  if (!wifiManager.autoConnect(name)) {
     WiFi.printDiag(Serial);
-		reboot();
+    reboot();
   }
 
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
   WiFi.setAutoReconnect(true);
 
-	Serial.println(WiFi.localIP());
+  Serial.println(WiFi.localIP());
 }
 
 void startMDNS() {
-	MDNS.addService("http", "tcp", 80);
+  MDNS.addService("http", "tcp", 80);
 
-	if (MDNS.begin(name))
-		Serial.println(F("MDNS responder started"));
+  if (MDNS.begin(name))
+    Serial.println(F("MDNS responder started"));
 }
 
 void startSSDP(ESP8266WebServer *const ws) {
-	Serial.println(F("Starting SSDP..."));
+  Serial.println(F("Starting SSDP..."));
 
-	SSDP.setSchemaURL("description.xml");
-	SSDP.setHTTPPort(80);
+  SSDP.setSchemaURL("description.xml");
+  SSDP.setHTTPPort(80);
 
-	SSDP.setName("LightBox");
-	SSDP.setSerialNumber(&name[4]);  // get ESP8266 serial number from nae
-	SSDP.setURL("index.html");
-	SSDP.setModelName("LightBox");
-	SSDP.setModelNumber("1.0");
-	SSDP.setModelURL("http://www.komputilo.nl/texts/lightbox");
-	SSDP.setManufacturer("van Heusden");
-	SSDP.setManufacturerURL("http://www.komputilo.nl/");
+  SSDP.setName("LightBox");
+  SSDP.setSerialNumber(&name[4]);  // get ESP8266 serial number from nae
+  SSDP.setURL("index.html");
+  SSDP.setModelName("LightBox");
+  SSDP.setModelNumber("1.0");
+  SSDP.setModelURL("http://www.komputilo.nl/texts/lightbox");
+  SSDP.setManufacturer("van Heusden");
+  SSDP.setManufacturerURL("http://www.komputilo.nl/");
 
-	SSDP.begin();
+  SSDP.begin();
 }
 
 void enableOTA() {
-	ArduinoOTA.setPort(8266);
-	ArduinoOTA.setHostname(name);
-	ArduinoOTA.setPassword("g3h31m");
+  ArduinoOTA.setPort(8266);
+  ArduinoOTA.setHostname(name);
+  ArduinoOTA.setPassword("g3h31m");
 
-	ArduinoOTA.onStart([]() {
-        clear_text();
-        cls();
-        text("",        true);
-        text("OTA upd", true);
-        text("start",   true);
-        in_ota = true;
-			});
-	ArduinoOTA.onEnd([]() {
-        clear_text();
-        cls();
-        text("OTA upd",  true);
-        text("finished", true);
-        text("wait...",  true);
-			});
-	ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-        Serial.printf("OTA progress: %u%%\r", progress * 100 / total);
-        static byte px = 255;
-        byte        x  = progress * WIDTH / total;
-        if (x != px) {
-          px = x;
-          setPixel(progress * WIDTH / total, 1, true);
-          putScreen();
-        }
-			});
-	ArduinoOTA.onError([](ota_error_t error) {
-        clear_text();
-        cls();
-        text("OTA upd", true);
-        text("error:",  true);
-        snprintf(p, sizeof work_buffer, "%u", error);
-        text(p,         true);
-			});
-	ArduinoOTA.begin();
-	Serial.println(F("Ready"));
+  ArduinoOTA.onStart([]() {
+    clear_text();
+    cls();
+    text("",        true);
+    text("OTA upd", true);
+    text("start",   true);
+    in_ota = true;
+  });
+  ArduinoOTA.onEnd([]() {
+    clear_text();
+    cls();
+    text("OTA upd",  true);
+    text("finished", true);
+    text("wait...",  true);
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("OTA progress: %u%%\r", progress * 100 / total);
+    static byte px = 255;
+    byte        x  = progress * WIDTH / total;
+    if (x != px) {
+      px = x;
+      setPixel(progress * WIDTH / total, 1, true);
+      putScreen();
+    }
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    clear_text();
+    cls();
+    text("OTA upd", true);
+    text("error:",  true);
+    snprintf(p, sizeof work_buffer, "%u", error);
+    text(p,         true);
+  });
+  ArduinoOTA.begin();
+  Serial.println(F("Ready"));
 }
 
 const char *tstr(bool state) {
@@ -398,7 +397,7 @@ void sendBmp(std::function<bool(const int x, const int y)> fGetPixel) {
   }
 
   setNoCacheHeaders();
-	web_server->send(200, "image/bmp", work_buffer, header1->bfSize);
+  web_server->send(200, "image/bmp", work_buffer, header1->bfSize);
 }
 
 void handleScreendump() {
@@ -488,7 +487,7 @@ void handleRoot() {
       mqtt_server, mqtt_port, mqtt_text_topic, mqtt_bitmap_topic, mqtt_on_topic,
       WiFi.SSID().c_str(), &name[4], fps[N_FPS - 1], double(fmin_), double(favg), double(fmedian), double(fmax_), pps[N_PPS - 1], double(pmin_), double(pavg), double(pmedian), double(pmax_), errors);
   setNoCacheHeaders();
-	web_server->send(200, "text/html", p);
+  web_server->send(200, "text/html", p);
 }
 
 void handleNotFound() {
@@ -500,7 +499,7 @@ void handleNotFound() {
 void restartMqtt(bool disconnect) {
   if (disconnect)
     mqtt_client.disconnect();
-	mqtt_client.setServer(mqtt_server, mqtt_port);
+  mqtt_client.setServer(mqtt_server, mqtt_port);
 }
 
 void sendDone(const char *const msg) {
@@ -569,12 +568,12 @@ void handleResetWiFi() {
 
 void handleSimpleCSS() {
   setNoCacheHeaders();
-	web_server->send(200, "text/css", simple_css, simple_css_len);
+  web_server->send(200, "text/css", simple_css, simple_css_len);
 }
 
 void handleFavicon() {
   setNoCacheHeaders();
-	web_server->send(200, "image/x-icon", favicon_ico, favicon_ico_len);
+  web_server->send(200, "image/x-icon", favicon_ico, favicon_ico_len);
 }
 
 void sendTogglesPage() {
@@ -628,34 +627,34 @@ void handleToggleTextAnim() {
 #define LEMPEL_SIZE 1024
 
 void lzjbDecompress(uint8_t *s_start, uint8_t *d_start, size_t s_len, size_t d_len) {
-	constexpr const byte NBBY = 8;
-	uint8_t *src         = s_start;
-	uint8_t *dst         = d_start;
-	uint8_t *const d_end = d_start + d_len;
-	uint8_t *cpy         = nullptr;
+  constexpr const byte NBBY = 8;
+  uint8_t *src         = s_start;
+  uint8_t *dst         = d_start;
+  uint8_t *const d_end = d_start + d_len;
+  uint8_t *cpy         = nullptr;
   uint8_t  copymap     = 0;
-	int copymask = 1 << (NBBY - 1);
+  int copymask = 1 << (NBBY - 1);
 
-	while (dst < d_end) {
-		if ((copymask <<= 1) == (1 << NBBY)) {
-			copymask = 1;
-			copymap = *src++;
-		}
+  while (dst < d_end) {
+    if ((copymask <<= 1) == (1 << NBBY)) {
+      copymask = 1;
+      copymap = *src++;
+    }
 
-		if (copymap & copymask) {
-			int mlen = (src[0] >> (NBBY - MATCH_BITS)) + MATCH_MIN;
-			int offset = ((src[0] << NBBY) | src[1]) & OFFSET_MASK;
-			src += 2;
-			if ((cpy = dst - offset) < d_start)
-				return;
+    if (copymap & copymask) {
+      int mlen = (src[0] >> (NBBY - MATCH_BITS)) + MATCH_MIN;
+      int offset = ((src[0] << NBBY) | src[1]) & OFFSET_MASK;
+      src += 2;
+      if ((cpy = dst - offset) < d_start)
+        return;
 
-			while (--mlen >= 0 && dst < d_end)
-				*dst++ = *cpy++;
-		}
-		else {
-			*dst++ = *src++;
-		}
-	}
+      while (--mlen >= 0 && dst < d_end)
+        *dst++ = *cpy++;
+    }
+    else {
+      *dst++ = *src++;
+    }
+  }
 }
 
 void ledupdate(LedControl & dev, const uint8_t *const buf) {
@@ -671,11 +670,11 @@ void sendDdpAnnouncement(const bool is_announncement, const IPAddress & ip, cons
     prev_send = now;
   }
 
-	work_buffer[0] = 64 | (is_announncement ? 0 : 4) | 1;  // version_1, reply, push
-	work_buffer[3] = 251;  // json status
+  work_buffer[0] = 64 | (is_announncement ? 0 : 4) | 1;  // version_1, reply, push
+  work_buffer[3] = 251;  // json status
   int msg_len = snprintf(&p[10], sizeof work_buffer - 10, "{\"status\": { \"man\": \"www.komputilo.nl\", \"mod\": \"Lightbox DDP server\", \"ver\": \"0.1\" } }");
-	work_buffer[8] = msg_len >> 8;
-	work_buffer[9] = msg_len;
+  work_buffer[8] = msg_len >> 8;
+  work_buffer[9] = msg_len;
 
 #if defined(DEBUG)
   Serial.println(&p[10]);
@@ -687,39 +686,39 @@ void sendDdpAnnouncement(const bool is_announncement, const IPAddress & ip, cons
  }
 
 void handleDdpData(const uint8_t *const buffer, const size_t n) {
-	if (n < 10)
-		return;
-	if ((buffer[0] >> 6) != 1) {  // unexpected version
-		Serial.println(F("DDP packet unknown version"));
-		return;
-	}
+  if (n < 10)
+    return;
+  if ((buffer[0] >> 6) != 1) {  // unexpected version
+    Serial.println(F("DDP packet unknown version"));
+    return;
+  }
 
-	bool has_timecode = buffer[0] & 16;
+  bool has_timecode = buffer[0] & 16;
 
   byte data_type = (buffer[2] >> 3) & 7;
-	if (data_type != 1 && data_type != 4)  // only RGB/grayscale
-		return;
-	if ((buffer[2] & 7) != 3)  // only 8 bits per pixel
-		return;
+  if (data_type != 1 && data_type != 4)  // only RGB/grayscale
+    return;
+  if ((buffer[2] & 7) != 3)  // only 8 bits per pixel
+    return;
 
-	if (buffer[3] != 1 && buffer[3] != 255)  // output
-		return;
+  if (buffer[3] != 1 && buffer[3] != 255)  // output
+    return;
 
-	uint32_t offset = (buffer[4] << 24) | (buffer[5] << 16) | (buffer[6] << 8) | buffer[7];
-	uint16_t length = (buffer[8] << 8) | buffer[9];
+  uint32_t offset = (buffer[4] << 24) | (buffer[5] << 16) | (buffer[6] << 8) | buffer[7];
+  uint16_t length = (buffer[8] << 8) | buffer[9];
 
-	int  packet_start_index = has_timecode   ? 14 : 10;
+  int  packet_start_index = has_timecode   ? 14 : 10;
   int  pixel_mul          = data_type == 1 ?  3 :  1;
   bool rc                 = false;
-	for(size_t i=packet_start_index; i<std::min(size_t(packet_start_index + length), n) && rc == false; i += pixel_mul) {
-		unsigned offset_offseted = offset + i - packet_start_index;
-		int y = offset_offseted / (WIDTH * pixel_mul);
-		int x = (offset_offseted / pixel_mul) % WIDTH;
+  for(size_t i=packet_start_index; i<std::min(size_t(packet_start_index + length), n) && rc == false; i += pixel_mul) {
+    unsigned offset_offseted = offset + i - packet_start_index;
+    int y = offset_offseted / (WIDTH * pixel_mul);
+    int x = (offset_offseted / pixel_mul) % WIDTH;
     if (pixel_mul == 3)
       rc = setPixelChecked(x, y, buffer[i + 0] + buffer[i + 1] + buffer[i + 2] >= 128 * 3);
     else
       rc = setPixelChecked(x, y, buffer[i + 0] >= 128);
-	}
+  }
 }
 
 void myDelay(int ms) {
@@ -732,76 +731,106 @@ void myDelay(int ms) {
 }
 
 void setup() {
-	Serial.begin(115200);
-	Serial.setDebugOutput(true);
-	Serial.println(F("Init"));
+  Serial.begin(115200);
+  Serial.setDebugOutput(true);
+  Serial.println(F("Init"));
 
-	for(int z = 0; z < NP; z++) {
-		lc1.shutdown(z, false);
-		lc1.setIntensity(z, 1);
-		lc1.clearDisplay(z);
-		lc2.shutdown(z, false);
-		lc2.setIntensity(z, 1);
-		lc2.clearDisplay(z);
-		lc3.shutdown(z, false);
-		lc3.setIntensity(z, 1);
-		lc3.clearDisplay(z);
-	}
+  for(int z = 0; z < NP; z++) {
+    lc1.shutdown(z, false);
+    lc1.setIntensity(z, 1);
+    lc1.clearDisplay(z);
+    lc2.shutdown(z, false);
+    lc2.setIntensity(z, 1);
+    lc2.clearDisplay(z);
+    lc3.shutdown(z, false);
+    lc3.setIntensity(z, 1);
+    lc3.clearDisplay(z);
+  }
 
-	snprintf(name, sizeof name, "L-B-%u", ESP.getChipId());
+#if 0  // LED benchmark
+  for(;;) {
+    uint32_t n = 0;
+    auto     s = millis();
+    do {
+      putScreen();
+      n++;
+    }
+    while(millis() - s < 1000);
+    Serial.println(n);
+    delay(1);
+  }
+#endif
+#if 0  // pixelflood benchmark
+  extern bool processTxtPixelfloodPixel(const char *const buf, const char *const buf_end);
+  for(;;) {
+    const char test[] = "PX 1 1 ffffff\n";
+    const char *end_  = strstr(test, "\n");
+    uint32_t n = 0;
+    auto     s = millis();
+    do {
+      processTxtPixelfloodPixel(test, strstr(test, end_));
+      n++;
+    }
+    while(millis() - s < 1000);
+    Serial.println(n);
+    delay(1);
+  }
+#endif
+
+  snprintf(name, sizeof name, "L-B-%u", ESP.getChipId());
 
   cls();
-	data[0] = 1;
+  data[0] = 1;
   putScreen();
 
   EEPROM.begin(EEPROM_SIZE);
   readSettings();
 
-	enableOTA();
+  enableOTA();
 
-	setupWifi();
+  setupWifi();
 
-	data[0] = 3;
+  data[0] = 3;
   putScreen();
 
-	web_server = new ESP8266WebServer(80);
+  web_server = new ESP8266WebServer(80);
 
-	web_server->on("/",                   handleRoot        );
-	web_server->on("/index.html",         handleRoot        );
-	web_server->on("/favicon.ico",        handleFavicon     );
-	web_server->on("/screendump.bmp",     handleScreendump  );
-	web_server->on("/sparkline-fps.bmp",  handleFpsSparkline);
-	web_server->on("/sparkline-pps.bmp",  handlePpsSparkline);
-	web_server->on("/simple.css",         handleSimpleCSS   );
-	web_server->on("/reset-wifi",         handleResetWiFi   );
+  web_server->on("/",                   handleRoot        );
+  web_server->on("/index.html",         handleRoot        );
+  web_server->on("/favicon.ico",        handleFavicon     );
+  web_server->on("/screendump.bmp",     handleScreendump  );
+  web_server->on("/sparkline-fps.bmp",  handleFpsSparkline);
+  web_server->on("/sparkline-pps.bmp",  handlePpsSparkline);
+  web_server->on("/simple.css",         handleSimpleCSS   );
+  web_server->on("/reset-wifi",         handleResetWiFi   );
 
-	web_server->on("/set-mqtt",           HTTP_POST, handleSetMqtt);
+  web_server->on("/set-mqtt",           HTTP_POST, handleSetMqtt);
 
   web_server->on("/toggle-pixelflood",  handleTogglePixelflood );
   web_server->on("/toggle-mqtt-text",   handleToggleMQTTText   );
   web_server->on("/toggle-mqtt-bitmap", handleToggleMQTTBitmap );
   web_server->on("/toggle-multicast",   handleToggleMulticast  );
-	web_server->on("/toggle-screensaver", handleToggleScreensaver);
-	web_server->on("/toggle-ddp",         handleToggleDdp        );
-	web_server->on("/toggle-ddp-ann",     handleToggleDdpAnnounce);
-	web_server->on("/toggle-text-anim",   handleToggleTextAnim   );
+  web_server->on("/toggle-screensaver", handleToggleScreensaver);
+  web_server->on("/toggle-ddp",         handleToggleDdp        );
+  web_server->on("/toggle-ddp-ann",     handleToggleDdpAnnounce);
+  web_server->on("/toggle-text-anim",   handleToggleTextAnim   );
 
-	web_server->on("/description.xml", HTTP_GET, []() { SSDP.schema(web_server->client()); });
+  web_server->on("/description.xml", HTTP_GET, []() { SSDP.schema(web_server->client()); });
 
   web_server->onNotFound(handleNotFound);
 
-	httpUpdater.setup(web_server);
+  httpUpdater.setup(web_server);
 
-	web_server->begin();
+  web_server->begin();
 
-	startMDNS();
+  startMDNS();
 
-	startSSDP(web_server);
+  startSSDP(web_server);
 
-	data[0] = 7;
+  data[0] = 7;
   putScreen();
 
-	udp_MC.beginMulticast(WiFi.localIP(), IPAddress(226, 1, 1, 9), 32009);
+  udp_MC.beginMulticast(WiFi.localIP(), IPAddress(226, 1, 1, 9), 32009);
   tcp_txt_pixelflood_server  .begin(                            );
   udp_txt_pixelflood_server  .begin(PIXELFLOOD_TXT_PORT         );
   udp_bin_pixelflood_server  .begin(PIXELFLOOD_BIN_PORT         );
@@ -816,11 +845,11 @@ void setup() {
   broadcast[2] = ip[2] | (~netmask[2]);
   broadcast[3] = ip[3] | (~netmask[3]);
 
-	data[0] = 0;
+  data[0] = 0;
   putScreen();
 
   restartMqtt(false);
-	mqtt_client.setCallback(mqttCallback);
+  mqtt_client.setCallback(mqttCallback);
 
 #if defined(DEBUG)
   text("DEBUG!");
@@ -834,7 +863,7 @@ void setup() {
   putScreen();
   myDelay(2000);
 
-	Serial.println(F("Go!"));
+  Serial.println(F("Go!"));
 }
 
 void cls() {
@@ -848,17 +877,17 @@ void clear_text() {
 }
 
 bool getPixel(const int x, const int y) {
-	if (x >= WIDTH || x < 0 || y >= HEIGHT || y < 0)
-		return false;
+  if (x >= WIDTH || x < 0 || y >= HEIGHT || y < 0)
+    return false;
 
-	int pixel_row = y / 8;
-	int matrix    = x / 8;
-	int matrix_y  = 7 - (y & 7);
-	int matrix_x  = x & 7;
-	int o         = pixel_row * WIDTH + matrix * 8 + matrix_y;
-	int mask      = 1 << matrix_x;
+  int pixel_row = y / 8;
+  int matrix    = x / 8;
+  int matrix_y  = 7 - (y & 7);
+  int matrix_x  = x & 7;
+  int o         = pixel_row * WIDTH + matrix * 8 + matrix_y;
+  int mask      = 1 << matrix_x;
 
-	return !!(data[o] & mask);
+  return !!(data[o] & mask);
 }
 
 void printRow(int o, const char what[]) {
@@ -874,8 +903,8 @@ void printRow(int o, const char what[]) {
 }
 
 void mqttCallback(const char topic[], byte *payload, unsigned int len) {
-	if (!payload || len == 0)
-		return;
+  if (!payload || len == 0)
+    return;
 
   if (strstr(topic, "hek42ticker")) {
     if (len >= 10)
@@ -959,11 +988,11 @@ void processUdpTextStream() {
 }
 
 void loop() {
-	ArduinoOTA.handle();
+  ArduinoOTA.handle();
   if (in_ota)
     return;
 
-	web_server->handleClient();
+  web_server->handleClient();
 
   if (enable_mqtt_bitmap || enable_mqtt_text)
     MQTTConnect();
@@ -977,9 +1006,9 @@ void loop() {
     drawn_anything |= rc.second;
   }
 
-	static uint32_t prev         = 0;
-	static int      mode         = 0;
-	uint32_t        now          = millis();
+  static uint32_t prev         = 0;
+  static int      mode         = 0;
+  uint32_t        now          = millis();
   if (enable_multicast) {
     int packet_size_mc = udp_MC.parsePacket();
     if (packet_size_mc) {
@@ -1025,7 +1054,7 @@ void loop() {
         drawn_anything = true;
       }
     }
-	}
+  }
 
   static uint32_t frame_count = 0;
   if (drawn_anything) {
