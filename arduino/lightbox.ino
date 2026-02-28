@@ -58,9 +58,9 @@ ESP8266WebServer *web_server { nullptr };
 
 #define NP 8
 /* int dataPin, int clkPin, int csPin, int NP */
-LedControl *lc1 { nullptr };
-LedControl *lc2 { nullptr };
-LedControl *lc3 { nullptr };
+LedControl lc1(D1, D2, D3, NP);
+LedControl lc2(D1, D2, D4, NP);
+LedControl lc3(D1, D2, D5, NP);
 
 bool enable_pixelflood   = true;
 bool enable_mqtt_text    = true;
@@ -643,8 +643,8 @@ void lzjbDecompress(uint8_t *s_start, uint8_t *d_start, size_t s_len, size_t d_l
   }
 }
 
-void ledupdate(LedControl *const dev, const uint8_t *const buf) {
-  dev->pushEverything(buf);
+void ledupdate(LedControl & dev, const uint8_t *const buf) {
+  dev.pushEverything(buf);
 }
 
 void sendDdpAnnouncement(const bool is_announncement, const IPAddress & ip, const uint16_t port) {
@@ -716,27 +716,30 @@ void myDelay(int ms) {
   while(millis() < until);
 }
 
+void initDisplay() {
+  lc1.begin();
+  lc2.begin();
+  lc3.begin();
+
+  for(int z = 0; z < NP; z++) {
+    lc1.shutdown(z, false);
+    lc1.setIntensity(z, 1);
+    lc1.clearDisplay(z);
+    lc2.shutdown(z, false);
+    lc2.setIntensity(z, 1);
+    lc2.clearDisplay(z);
+    lc3.shutdown(z, false);
+    lc3.setIntensity(z, 1);
+    lc3.clearDisplay(z);
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   Serial.setDebugOutput(true);
   Serial.println(F("Init"));
 
-  delay(500);
-  lc1 = new LedControl(D1, D2, D3, NP);
-  lc2 = new LedControl(D1, D2, D4, NP);
-  lc3 = new LedControl(D1, D2, D5, NP);
-
-  for(int z = 0; z < NP; z++) {
-    lc1->shutdown(z, false);
-    lc1->setIntensity(z, 1);
-    lc1->clearDisplay(z);
-    lc2->shutdown(z, false);
-    lc2->setIntensity(z, 1);
-    lc2->clearDisplay(z);
-    lc3->shutdown(z, false);
-    lc3->setIntensity(z, 1);
-    lc3->clearDisplay(z);
-  }
+  initDisplay();
 
 #if 0  // LED benchmark
   for(;;) {
@@ -780,6 +783,8 @@ void setup() {
   enableOTA();
 
   setupWifi();
+
+  initDisplay();
 
   data[0] = 3;
   putScreen();
